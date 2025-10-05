@@ -77,3 +77,265 @@ type LineScoreTeam struct {
 	Errors int `json:"errors"`
 }
 
+// GameFeed is the primary game endpoint consumed by the UI.
+type GameFeed struct {
+	GameData GameData `json:"gameData"`
+	LiveData LiveData `json:"liveData"`
+	MetaData MetaData `json:"metaData"`
+}
+
+// MetaData carries polling meta fields.
+type MetaData struct {
+	Wait      int    `json:"wait"`
+	TimeStamp string `json:"timeStamp"`
+}
+
+// GameData holds static information about a particular game.
+type GameData struct {
+	Status           GameStatus       `json:"status"`
+	Teams            GameTeams        `json:"teams"`
+	Venue            Venue            `json:"venue"`
+	Datetime         GameDateTime     `json:"datetime"`
+	ProbablePitchers ProbablePitchers `json:"probablePitchers"`
+}
+
+// GameTeams groups home/away teams with more detailed info.
+type GameTeams struct {
+	Home GameTeam `json:"home"`
+	Away GameTeam `json:"away"`
+}
+
+// GameTeam extends TeamInfo with record info.
+type GameTeam struct {
+	TeamName     string `json:"teamName"`
+	Abbreviation string `json:"abbreviation"`
+	Record       Record `json:"record"`
+}
+
+// Record contains wins and losses for the club.
+type Record struct {
+	Wins   int `json:"wins"`
+	Losses int `json:"losses"`
+}
+
+// Venue covers the ballpark details.
+type Venue struct {
+	Name     string        `json:"name"`
+	Location VenueLocation `json:"location"`
+}
+
+// VenueLocation exposes the city and state for display.
+type VenueLocation struct {
+	City        string `json:"city"`
+	StateAbbrev string `json:"stateAbbrev"`
+}
+
+// GameDateTime carries the scheduled start.
+type GameDateTime struct {
+	DateTime string `json:"dateTime"`
+}
+
+// ProbablePitchers references the starting pitchers.
+type ProbablePitchers struct {
+	Home *PersonRef `json:"home"`
+	Away *PersonRef `json:"away"`
+}
+
+// PersonRef references a player by identifier.
+type PersonRef struct {
+	ID int `json:"id"`
+}
+
+// LiveData includes the mutable game state.
+type LiveData struct {
+	Plays     Plays         `json:"plays"`
+	Linescore LiveLineScore `json:"linescore"`
+	Boxscore  Boxscore      `json:"boxscore"`
+	Decisions *Decisions    `json:"decisions"`
+}
+
+// Plays contains the current play plus the full history.
+type Plays struct {
+	CurrentPlay Play   `json:"currentPlay"`
+	AllPlays    []Play `json:"allPlays"`
+}
+
+// LiveLineScore extends GameLineScore with balls/strikes/outs and inning breakdown.
+type LiveLineScore struct {
+	CurrentInning        int             `json:"currentInning"`
+	CurrentInningOrdinal string          `json:"currentInningOrdinal"`
+	InningState          string          `json:"inningState"`
+	IsTopInning          bool            `json:"isTopInning"`
+	Balls                int             `json:"balls"`
+	Strikes              int             `json:"strikes"`
+	Outs                 int             `json:"outs"`
+	Teams                LineScoreTotals `json:"teams"`
+	Offense              OffensiveState  `json:"offense"`
+	Innings              []InningLine    `json:"innings"`
+}
+
+// OffensiveState indicates which bases are occupied.
+type OffensiveState struct {
+	First  *BaseRunner `json:"first"`
+	Second *BaseRunner `json:"second"`
+	Third  *BaseRunner `json:"third"`
+}
+
+// BaseRunner is present when a base is occupied.
+type BaseRunner struct {
+	ID int `json:"id"`
+}
+
+// InningLine captures runs scored per inning.
+type InningLine struct {
+	Num  int            `json:"num"`
+	Home InningTeamRuns `json:"home"`
+	Away InningTeamRuns `json:"away"`
+}
+
+// InningTeamRuns contains the runs for an inning.
+type InningTeamRuns struct {
+	Runs *int `json:"runs"`
+}
+
+// Play represents a single play with all supporting metadata.
+type Play struct {
+	Result     PlayResult  `json:"result"`
+	About      PlayAbout   `json:"about"`
+	Count      PlayCount   `json:"count"`
+	Matchup    PlayMatchup `json:"matchup"`
+	PlayEvents []PlayEvent `json:"playEvents"`
+}
+
+// PlayResult summarises the outcome of a play.
+type PlayResult struct {
+	Description string `json:"description"`
+	Event       string `json:"event"`
+	AwayScore   int    `json:"awayScore"`
+	HomeScore   int    `json:"homeScore"`
+}
+
+// PlayAbout contains inning, outs, and scoring context.
+type PlayAbout struct {
+	Inning        int    `json:"inning"`
+	HalfInning    string `json:"halfInning"`
+	IsComplete    bool   `json:"isComplete"`
+	IsScoringPlay bool   `json:"isScoringPlay"`
+	HasOut        bool   `json:"hasOut"`
+}
+
+// PlayCount reflects the ball/strike/out situation at the end of a play.
+type PlayCount struct {
+	Balls   int `json:"balls"`
+	Strikes int `json:"strikes"`
+	Outs    int `json:"outs"`
+}
+
+// PlayMatchup identifies the batter and pitcher.
+type PlayMatchup struct {
+	Pitcher PersonRef `json:"pitcher"`
+	Batter  PersonRef `json:"batter"`
+}
+
+// PlayEvent provides pitch-by-pitch or action detail.
+type PlayEvent struct {
+	Type          PlayEventType    `json:"type"`
+	IsPitch       bool             `json:"isPitch"`
+	IsScoringPlay bool             `json:"isScoringPlay"`
+	Details       PlayEventDetails `json:"details"`
+	Count         PlayCount        `json:"count"`
+	PitchData     *PitchData       `json:"pitchData"`
+}
+
+// PlayEventType is used for human-readable descriptions.
+type PlayEventType struct {
+	Description string `json:"description"`
+}
+
+// PlayEventDetails holds textual descriptions and flags.
+type PlayEventDetails struct {
+	Description   string        `json:"description"`
+	Event         string        `json:"event"`
+	IsInPlay      bool          `json:"isInPlay"`
+	IsStrike      bool          `json:"isStrike"`
+	IsBall        bool          `json:"isBall"`
+	Type          PlayEventType `json:"type"`
+	IsScoringPlay bool          `json:"isScoringPlay"`
+}
+
+// PitchData provides velocity information when available.
+type PitchData struct {
+	StartSpeed float64 `json:"startSpeed"`
+}
+
+// Boxscore aggregates player level stats used in various panels.
+type Boxscore struct {
+	Teams struct {
+		Home BoxscoreTeam `json:"home"`
+		Away BoxscoreTeam `json:"away"`
+	} `json:"teams"`
+}
+
+// BoxscoreTeam maps each player by key (e.g. ID12345).
+type BoxscoreTeam struct {
+	Players map[string]BoxscorePlayer `json:"players"`
+}
+
+// BoxscorePlayer is used for pitcher/batter details on the matchup card.
+type BoxscorePlayer struct {
+	Person       PersonInfo           `json:"person"`
+	JerseyNumber string               `json:"jerseyNumber"`
+	Stats        BoxscorePlayerStats  `json:"stats"`
+	SeasonStats  BoxscorePlayerSeason `json:"seasonStats"`
+}
+
+// PersonInfo contains display name information.
+type PersonInfo struct {
+	FullName string `json:"fullName"`
+}
+
+// BoxscorePlayerStats captures current game performance splits.
+type BoxscorePlayerStats struct {
+	Pitching PitchingStats `json:"pitching"`
+	Batting  BattingStats  `json:"batting"`
+}
+
+// PitchingStats provides info for the matchup panel.
+type PitchingStats struct {
+	InningsPitched string `json:"inningsPitched"`
+	PitchesThrown  int    `json:"pitchesThrown"`
+}
+
+// BattingStats summarises at-bats and hits for the current game.
+type BattingStats struct {
+	Hits   int `json:"hits"`
+	AtBats int `json:"atBats"`
+}
+
+// BoxscorePlayerSeason tracks season-long performance.
+type BoxscorePlayerSeason struct {
+	Pitching SeasonPitching `json:"pitching"`
+	Batting  SeasonBatting  `json:"batting"`
+}
+
+// SeasonPitching contains wins/losses/ERA strikeouts.
+type SeasonPitching struct {
+	Wins       int    `json:"wins"`
+	Losses     int    `json:"losses"`
+	ERA        string `json:"era"`
+	StrikeOuts int    `json:"strikeOuts"`
+	Saves      int    `json:"saves"`
+}
+
+// SeasonBatting contains batting average and home runs.
+type SeasonBatting struct {
+	AVG      string `json:"avg"`
+	HomeRuns int    `json:"homeRuns"`
+}
+
+// Decisions lists the pitcher of record(s).
+type Decisions struct {
+	Winner *PersonRef `json:"winner"`
+	Loser  *PersonRef `json:"loser"`
+	Save   *PersonRef `json:"save"`
+}

@@ -13,8 +13,7 @@ import (
 const (
 	userAgent        = "go.dalton.dog/batterup/1.0"
 	scheduleEndpoint = "https://statsapi.mlb.com/api/v1/schedule"
-	// gameEndpointFmt   = "https://statsapi.mlb.com/api/v1.1/game/%d/feed/live"
-	// standingsEndpoint = "https://statsapi.mlb.com/api/v1/standings"
+	gameEndpointFmt  = "https://statsapi.mlb.com/api/v1.1/game/%d/feed/live"
 )
 
 func (c *Client) get(ctx context.Context, endpoint string, out any) error {
@@ -78,3 +77,12 @@ func (c *Client) FetchSchedule(ctx context.Context, date time.Time) (*ScheduleRe
 	return &resp, nil
 }
 
+// FetchGame returns the live feed for a specific MLB game.
+func (c *Client) FetchGame(ctx context.Context, gameID int) (*GameFeed, error) {
+	endpoint := fmt.Sprintf(gameEndpointFmt, gameID)
+	var feed GameFeed
+	if err := c.get(ctx, endpoint, &feed); err != nil {
+		return nil, fmt.Errorf("game feed request failed: %w", err)
+	}
+	return &feed, nil
+}
