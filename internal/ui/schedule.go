@@ -74,7 +74,7 @@ func (s *ScheduleModel) SetSize(width, height int) {
 	s.grid.SetSize(width, height-1)
 }
 
-func (s ScheduleModel) Update(msg tea.Msg) (ScheduleModel, tea.Cmd) {
+func (s ScheduleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if !s.active {
@@ -83,8 +83,16 @@ func (s ScheduleModel) Update(msg tea.Msg) (ScheduleModel, tea.Cmd) {
 
 		switch msg.String() {
 		case "enter":
-			// TODO: Implement
-			_ = s.grid.GetIndex()
+			if s.loading || len(s.games) == 0 {
+				return s, nil
+			}
+			idx := s.grid.GetIndex()
+			if idx < 0 || idx >= len(s.games) {
+				return s, nil
+			}
+			s.selected = idx
+			gameID := s.games[idx].GamePk
+			return s, func() tea.Msg { return openGameMsg{GameID: gameID} }
 		case "p", "P":
 			s.date = s.date.AddDate(0, 0, -1)
 			s.selected = 0
@@ -144,6 +152,7 @@ func (s ScheduleModel) Update(msg tea.Msg) (ScheduleModel, tea.Cmd) {
 
 	var cmd tea.Cmd
 	s.grid, cmd = s.grid.Update(msg)
+	s.selected = s.grid.GetIndex()
 	return s, cmd
 }
 

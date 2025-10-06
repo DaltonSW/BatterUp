@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"image/color"
-	"log"
 	"strings"
 	"time"
 
@@ -16,8 +15,8 @@ import (
 )
 
 type GameModel struct {
-	client *mlb.Client
-	logger *log.Logger
+	client  *mlb.Client
+	context context.Context
 
 	width  int
 	height int
@@ -30,10 +29,31 @@ type GameModel struct {
 
 	requestID int
 
-	playsLines  []string
-	playsOffset int
-	playsHeight int
-	playsWidth  int
+	playViews       []playView
+	playLines       []playLine
+	playLineOffsets []int
+	playsOffset     int
+	playsHeight     int
+	playsWidth      int
+	selectedPlay    int
+	selectedAtBat   int
+}
+
+type playView struct {
+	play      mlb.Play
+	snapshot  playSnapshot
+	lines     []string
+	lineCount int
+}
+
+type playLine struct {
+	text      string
+	playIndex int
+	isHeader  bool
+}
+
+type playSnapshot struct {
+	linescore mlb.LiveLineScore
 }
 
 type gameLoadedMsg struct {
@@ -50,10 +70,10 @@ type gameFailedMsg struct {
 
 type gamePollMsg struct{}
 
-func newGameModel(client *mlb.Client, logger *log.Logger) GameModel {
+func NewGameModel(client *mlb.Client, ctx context.Context) GameModel {
 	return GameModel{
-		client: client,
-		logger: logger,
+		client:  client,
+		context: ctx,
 	}
 }
 
@@ -69,25 +89,32 @@ func (g *GameModel) SetSize(width, height int) {
 
 	g.playsWidth = availWidth
 	g.playsHeight = availHeight
-	g.enforcePlayOffset()
+	g.scrollToSelected()
 }
 
-func (g *GameModel) Start(gameID int) {
+func (g GameModel) Start(gameID int) (GameModel, tea.Cmd) {
 	g.gameID = gameID
 	g.feed = nil
 	g.err = nil
-	g.loading = true
 	g.active = true
-	g.requestID++
-	g.playsLines = nil
+	g.playViews = nil
+	g.playLines = nil
+	g.playLineOffsets = nil
 	g.playsOffset = 0
+	g.selectedPlay = 0
+	g.selectedAtBat = -1
+	g.loading = gameID != 0
+
+	if gameID == 0 {
+		return g, nil
+	}
+
+	g.requestID++
+	return g, g.fetch()
 }
 
-func (g *GameModel) Init(ctx context.Context) tea.Cmd {
-	if g.gameID == 0 {
-		return nil
-	}
-	return g.fetch(ctx)
+func (g GameModel) Init() tea.Cmd {
+	return nil
 }
 
 func (g *GameModel) SetActive(active bool) {
@@ -97,21 +124,21 @@ func (g *GameModel) SetActive(active bool) {
 	}
 }
 
-func (g *GameModel) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
+func (g GameModel) Update(msg tea.Msg) (GameModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if !g.active {
-			return nil
+			return g, nil
 		}
 		switch msg.String() {
 		case "j", "down":
-			g.scrollPlays(1)
+			g.moveSelection(1)
 		case "k", "up":
-			g.scrollPlays(-1)
+			g.moveSelection(-1)
 		case "pgdown":
-			g.scrollPlays(g.playsHeight)
+			g.moveSelection(g.pageDelta())
 		case "pgup":
-			g.scrollPlays(-g.playsHeight)
+			g.moveSelection(-g.pageDelta())
 		}
 	case tea.WindowSizeMsg:
 		if g.active {
@@ -119,10 +146,10 @@ func (g *GameModel) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		}
 	case gameLoadedMsg:
 		if msg.id != g.requestID || msg.gameID != g.gameID {
-			return nil
+			return g, nil
 		}
 		if !g.active {
-			return nil
+			return g, nil
 		}
 		g.loading = false
 		g.err = nil
@@ -132,39 +159,51 @@ func (g *GameModel) Update(ctx context.Context, msg tea.Msg) tea.Cmd {
 		if wait == 0 {
 			wait = 10
 		}
-		return tea.Tick(time.Duration(wait)*time.Second, func(time.Time) tea.Msg { return gamePollMsg{} })
+		return g, tea.Tick(time.Duration(wait)*time.Second, func(time.Time) tea.Msg { return gamePollMsg{} })
 	case gameFailedMsg:
 		if msg.id != g.requestID || msg.gameID != g.gameID {
-			return nil
+			return g, nil
 		}
 		if !g.active {
-			return nil
+			return g, nil
 		}
 		g.loading = false
 		g.err = msg.err
 	case gamePollMsg:
-		if !g.active {
-			return nil
+		if !g.active || g.gameID == 0 {
+			return g, nil
 		}
-		return g.fetch(ctx)
+		g.requestID++
+		g.loading = true
+		return g, g.fetch()
 	}
-	return nil
+	return g, nil
 }
 
-func (g *GameModel) fetch(ctx context.Context) tea.Cmd {
-	g.loading = true
-	currentID := g.requestID
+func (g GameModel) fetch() tea.Cmd {
+	if g.gameID == 0 || g.client == nil {
+		return nil
+	}
+
+	ctx := g.context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	requestID := g.requestID
 	gameID := g.gameID
+	client := g.client
+
 	return func() tea.Msg {
-		feed, err := g.client.FetchGame(ctx, gameID)
+		feed, err := client.FetchGame(ctx, gameID)
 		if err != nil {
-			return gameFailedMsg{id: currentID, gameID: gameID, err: err}
+			return gameFailedMsg{id: requestID, gameID: gameID, err: err}
 		}
-		return gameLoadedMsg{id: currentID, gameID: gameID, feed: feed}
+		return gameLoadedMsg{id: requestID, gameID: gameID, feed: feed}
 	}
 }
 
-func (g *GameModel) View() string {
+func (g GameModel) View() string {
 	if g.gameID == 0 {
 		return "Select a game to view"
 	}
@@ -181,10 +220,10 @@ func (g *GameModel) View() string {
 	switch g.feed.GameData.Status.AbstractGameCode {
 	case "P":
 		return g.renderPreview()
-	case "L":
-		return g.renderLive()
-	case "F":
-		return g.renderFinished()
+	// case "L":
+	// 	return g.renderLive()
+	// case "F":
+	// 	return g.renderFinished()
 	default:
 		return g.renderLive()
 	}
@@ -192,48 +231,194 @@ func (g *GameModel) View() string {
 
 func (g *GameModel) refreshViewport() {
 	if g.feed == nil {
-		g.playsLines = nil
+		g.playViews = nil
+		g.playLines = nil
+		g.playLineOffsets = nil
 		g.playsOffset = 0
+		g.selectedPlay = 0
+		g.selectedAtBat = -1
 		return
 	}
-	plays := renderAllPlays(g.feed.LiveData.Plays.AllPlays)
-	if plays == "" {
-		g.playsLines = nil
+	plays := g.feed.LiveData.Plays.AllPlays
+	if len(plays) == 0 {
+		g.playViews = nil
+		g.playLines = nil
+		g.playLineOffsets = nil
 		g.playsOffset = 0
+		g.selectedPlay = 0
+		g.selectedAtBat = -1
 		return
 	}
-	g.playsLines = strings.Split(plays, "\n")
-	g.enforcePlayOffset()
+	snapshots := buildPlaySnapshots(plays)
+	g.playViews = buildPlayViews(plays, snapshots)
+	if len(g.playViews) == 0 {
+		g.playLines = nil
+		g.playLineOffsets = nil
+		g.playsOffset = 0
+		g.selectedPlay = 0
+		g.selectedAtBat = -1
+		return
+	}
+	if g.selectedAtBat >= 0 {
+		if idx := g.indexForAtBat(g.selectedAtBat); idx >= 0 {
+			g.selectedPlay = idx
+		} else {
+			g.selectedPlay = 0
+		}
+	} else {
+		g.selectedPlay = 0
+	}
+	if g.selectedPlay >= len(g.playViews) {
+		g.selectedPlay = len(g.playViews) - 1
+	}
+	g.selectedAtBat = g.playViews[g.selectedPlay].play.AtBatIndex
+	g.rebuildPlayLines()
+	g.scrollToSelected()
 }
 
 func (g *GameModel) renderPlaysView() string {
-	if len(g.playsLines) == 0 {
+	if len(g.playLines) == 0 {
 		return ""
 	}
 	if g.playsHeight <= 0 {
-		return strings.Join(g.playsLines, "\n")
+		lines := make([]string, 0, len(g.playLines))
+		for i := range g.playLines {
+			lines = append(lines, g.renderPlayLine(i))
+		}
+		return strings.Join(lines, "\n")
 	}
-
 	start := max(g.playsOffset, 0)
-
-	maxPlays := g.maxPlaysOffset()
-	if start > maxPlays {
-		start = maxPlays
+	maxOffset := g.maxPlaysOffset()
+	if start > maxOffset {
+		start = maxOffset
 	}
-
-	end := min(start+g.playsHeight, len(g.playsLines))
-	return strings.Join(g.playsLines[start:end], "\n")
+	end := min(start+g.playsHeight, len(g.playLines))
+	lines := make([]string, 0, end-start)
+	for i := start; i < end; i++ {
+		lines = append(lines, g.renderPlayLine(i))
+	}
+	return strings.Join(lines, "\n")
 }
 
-func (g *GameModel) scrollPlays(delta int) {
-	if len(g.playsLines) == 0 {
+func (g *GameModel) renderPlayLine(idx int) string {
+	line := g.playLines[idx]
+	text := line.text
+	if line.playIndex == g.selectedPlay && line.isHeader {
+		return selectedPlayStyle.Render(text)
+	}
+	return text
+}
+
+func (g *GameModel) rebuildPlayLines() {
+	if len(g.playViews) == 0 {
+		g.playLines = nil
+		g.playLineOffsets = nil
 		return
 	}
+	lines := make([]playLine, 0, len(g.playViews)*3)
+	offsets := make([]int, len(g.playViews))
+	linePos := 0
+	for idx, view := range g.playViews {
+		offsets[idx] = linePos
+		for lineIdx, text := range view.lines {
+			lines = append(lines, playLine{
+				text:      text,
+				playIndex: idx,
+				isHeader:  lineIdx == 0,
+			})
+			linePos++
+		}
+	}
+	g.playLines = lines
+	g.playLineOffsets = offsets
+}
+
+func (g *GameModel) indexForAtBat(atBat int) int {
+	for idx, view := range g.playViews {
+		if view.play.AtBatIndex == atBat {
+			return idx
+		}
+	}
+	return -1
+}
+
+func (g *GameModel) scrollToSelected() {
 	if g.playsHeight <= 0 {
+		g.playsOffset = 0
 		return
 	}
-	g.playsOffset += delta
+	if len(g.playLineOffsets) == 0 {
+		g.playsOffset = 0
+		return
+	}
+	if g.selectedPlay < 0 {
+		g.selectedPlay = 0
+	}
+	if g.selectedPlay >= len(g.playLineOffsets) {
+		g.selectedPlay = len(g.playLineOffsets) - 1
+	}
+	start := g.playLineOffsets[g.selectedPlay]
+	end := start + g.playViews[g.selectedPlay].lineCount
+	if g.playsOffset > start {
+		g.playsOffset = start
+	} else if end > g.playsOffset+g.playsHeight {
+		g.playsOffset = max(0, end-g.playsHeight)
+	}
 	g.enforcePlayOffset()
+}
+
+func (g *GameModel) moveSelection(delta int) {
+	if len(g.playViews) == 0 {
+		return
+	}
+	if delta == 0 {
+		return
+	}
+	idx := max(g.selectedPlay+delta, 0)
+
+	if idx >= len(g.playViews) {
+		idx = len(g.playViews) - 1
+	}
+	if idx == g.selectedPlay {
+		return
+	}
+	g.selectedPlay = idx
+	g.selectedAtBat = g.playViews[g.selectedPlay].play.AtBatIndex
+	g.scrollToSelected()
+}
+
+func (g *GameModel) visiblePlayCount() int {
+	if g.playsHeight <= 0 || len(g.playLines) == 0 {
+		return len(g.playViews)
+	}
+	start := max(g.playsOffset, 0)
+	end := min(start+g.playsHeight, len(g.playLines))
+	if end <= start {
+		return 0
+	}
+	seen := make(map[int]struct{}, end-start)
+	for i := start; i < end; i++ {
+		seen[g.playLines[i].playIndex] = struct{}{}
+	}
+	return len(seen)
+}
+
+func (g *GameModel) pageDelta() int {
+	count := g.visiblePlayCount()
+	if count <= 1 {
+		count = g.playsHeight
+	}
+	if count <= 1 {
+		count = 5
+	}
+	return max(1, count-1)
+}
+
+func (g *GameModel) currentPlayView() *playView {
+	if g.selectedPlay < 0 || g.selectedPlay >= len(g.playViews) {
+		return nil
+	}
+	return &g.playViews[g.selectedPlay]
 }
 
 func (g *GameModel) enforcePlayOffset() {
@@ -257,10 +442,10 @@ func (g *GameModel) maxPlaysOffset() int {
 	if g.playsHeight <= 0 {
 		return 0
 	}
-	if len(g.playsLines) <= g.playsHeight {
+	if len(g.playLines) <= g.playsHeight {
 		return 0
 	}
-	return len(g.playsLines) - g.playsHeight
+	return len(g.playLines) - g.playsHeight
 }
 
 func (g *GameModel) renderPreview() string {
@@ -312,6 +497,17 @@ func previewTeamLines(team mlb.GameTeam, probable *mlb.PersonRef, roster map[str
 func (g *GameModel) renderLive() string {
 	linescore := g.feed.LiveData.Linescore
 	teams := g.feed.GameData.Teams
+	selected := g.currentPlayView()
+	var play mlb.Play
+	playAvailable := false
+	if selected != nil {
+		linescore = selected.snapshot.linescore
+		play = selected.play
+		playAvailable = true
+	} else {
+		play = g.feed.LiveData.Plays.CurrentPlay
+		playAvailable = true
+	}
 
 	header := lipgloss.JoinHorizontal(lipgloss.Top,
 		renderInning(linescore),
@@ -320,8 +516,12 @@ func (g *GameModel) renderLive() string {
 		lipgloss.NewStyle().PaddingLeft(2).Render(renderLineScoreTable(linescore, teams)),
 	)
 
-	matchup := renderMatchup(g.feed.LiveData, teams)
-	atBat := renderAtBat(g.feed.LiveData.Plays.CurrentPlay)
+	matchup := ""
+	atBat := ""
+	if playAvailable {
+		matchup = renderMatchup(play, g.feed.LiveData.Boxscore, teams)
+		atBat = renderAtBat(play)
+	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		header,
@@ -334,28 +534,28 @@ func (g *GameModel) renderLive() string {
 	return content
 }
 
-func (g *GameModel) renderFinished() string {
-	linescore := g.feed.LiveData.Linescore
-	teams := g.feed.GameData.Teams
-	decisions := g.feed.LiveData.Decisions
-	box := g.feed.LiveData.Boxscore
-
-	score := fmt.Sprintf("%s %d - %s %d",
-		teams.Away.Abbreviation, linescore.Teams.Away.Runs,
-		teams.Home.Abbreviation, linescore.Teams.Home.Runs,
-	)
-
-	dec := renderDecisions(decisions, box, g.feed.GameData.Teams)
-
-	table := renderLineScoreTable(linescore, teams)
-
-	return lipgloss.JoinVertical(lipgloss.Left,
-		lipgloss.NewStyle().Bold(true).Render(score),
-		table,
-		"",
-		dec,
-	)
-}
+// func (g *GameModel) renderFinished() string {
+// 	linescore := g.feed.LiveData.Linescore
+// 	teams := g.feed.GameData.Teams
+// 	decisions := g.feed.LiveData.Decisions
+// 	box := g.feed.LiveData.Boxscore
+//
+// 	score := fmt.Sprintf("%s %d - %s %d",
+// 		teams.Away.Abbreviation, linescore.Teams.Away.Runs,
+// 		teams.Home.Abbreviation, linescore.Teams.Home.Runs,
+// 	)
+//
+// 	dec := renderDecisions(decisions, box, g.feed.GameData.Teams)
+//
+// 	table := renderLineScoreTable(linescore, teams)
+//
+// 	return lipgloss.JoinVertical(lipgloss.Left,
+// 		lipgloss.NewStyle().Bold(true).Render(score),
+// 		table,
+// 		"",
+// 		dec,
+// 	)
+// }
 
 func renderLineScoreTable(linescore mlb.LiveLineScore, teams mlb.GameTeams) string {
 	totalInnings := max(len(linescore.Innings), 9)
@@ -414,12 +614,9 @@ func renderLineScoreTable(linescore mlb.LiveLineScore, teams mlb.GameTeams) stri
 	return tableStyle.Render(table)
 }
 
-func renderMatchup(live mlb.LiveData, teams mlb.GameTeams) string {
-	current := live.Plays.CurrentPlay
-	box := live.Boxscore
-
-	pitcher, pitchTeam := lookupPlayer(current.Matchup.Pitcher.ID, box, teams)
-	batter, batTeam := lookupPlayer(current.Matchup.Batter.ID, box, teams)
+func renderMatchup(play mlb.Play, box mlb.Boxscore, teams mlb.GameTeams) string {
+	pitcher, pitchTeam := lookupPlayer(play.Matchup.Pitcher.ID, box, teams)
+	batter, batTeam := lookupPlayer(play.Matchup.Batter.ID, box, teams)
 
 	pitchTeam = safeTeam(pitchTeam)
 	batTeam = safeTeam(batTeam)
@@ -516,26 +713,297 @@ func bullet(count, total int, color color.Color) string {
 	return strings.Join(parts, " ")
 }
 
-func renderAllPlays(plays []mlb.Play) string {
-	if len(plays) == 0 {
-		return ""
+func renderPlayLines(play mlb.Play) []string {
+	header := fmt.Sprintf("[%s %d] %s", strings.ToUpper(play.About.HalfInning), play.About.Inning, colorForPlay(play))
+	lines := []string{header}
+	for j := len(play.PlayEvents) - 1; j >= 0; j-- {
+		event := play.PlayEvents[j]
+		if event.Details.Description == "" {
+			continue
+		}
+		lines = append(lines, "  "+event.Details.Description)
 	}
-	var lines []string
+	return lines
+}
+
+func buildPlayViews(plays []mlb.Play, snapshots []playSnapshot) []playView {
+	if len(plays) != len(snapshots) {
+		return nil
+	}
+	views := make([]playView, 0, len(plays))
 	for i := len(plays) - 1; i >= 0; i-- {
-		play := plays[i]
-		inning := fmt.Sprintf("[%s %d]", strings.ToUpper(play.About.HalfInning), play.About.Inning)
-		result := colorForPlay(play)
-		line := fmt.Sprintf("%s %s", inning, result)
-		lines = append(lines, line)
-		for j := len(play.PlayEvents) - 1; j >= 0; j-- {
-			event := play.PlayEvents[j]
-			if event.Details.Description == "" {
-				continue
-			}
-			lines = append(lines, "  "+event.Details.Description)
+		lines := renderPlayLines(plays[i])
+		if len(lines) == 0 {
+			lines = []string{""}
+		}
+		views = append(views, playView{
+			play:      plays[i],
+			snapshot:  snapshots[i],
+			lines:     lines,
+			lineCount: len(lines),
+		})
+	}
+	return views
+}
+
+func buildPlaySnapshots(plays []mlb.Play) []playSnapshot {
+	if len(plays) == 0 {
+		return nil
+	}
+	acc := newGameAccumulator()
+	snapshots := make([]playSnapshot, len(plays))
+	for i, play := range plays {
+		acc.advance(play)
+		snapshots[i] = acc.snapshot(play)
+	}
+	return snapshots
+}
+
+type gameAccumulator struct {
+	scoreAway     int
+	scoreHome     int
+	hitsAway      int
+	hitsHome      int
+	errorsAway    int
+	errorsHome    int
+	bases         map[string]int
+	innings       map[int]*inningTotals
+	maxInning     int
+	currentInning int
+	currentIsTop  bool
+}
+
+type inningTotals struct {
+	awayRuns   int
+	homeRuns   int
+	awayPlayed bool
+	homePlayed bool
+}
+
+func newGameAccumulator() *gameAccumulator {
+	return &gameAccumulator{
+		bases: map[string]int{
+			baseFirst:  0,
+			baseSecond: 0,
+			baseThird:  0,
+		},
+		innings:       make(map[int]*inningTotals),
+		currentInning: -1,
+	}
+}
+
+func (a *gameAccumulator) advance(play mlb.Play) {
+	a.ensureHalfInning(play)
+	a.applyRuns(play)
+	a.applyHitsAndErrors(play)
+	a.applyRunners(play)
+}
+
+func (a *gameAccumulator) ensureHalfInning(play mlb.Play) {
+	if a.currentInning == play.About.Inning && a.currentIsTop == play.About.IsTopInning {
+		return
+	}
+	a.currentInning = play.About.Inning
+	a.currentIsTop = play.About.IsTopInning
+	a.bases[baseFirst] = 0
+	a.bases[baseSecond] = 0
+	a.bases[baseThird] = 0
+}
+
+func (a *gameAccumulator) applyRuns(play mlb.Play) {
+	prevAway, prevHome := a.scoreAway, a.scoreHome
+	a.scoreAway = play.Result.AwayScore
+	a.scoreHome = play.Result.HomeScore
+
+	deltaAway := max(a.scoreAway-prevAway, 0)
+	deltaHome := max(a.scoreHome-prevHome, 0)
+
+	inning := play.About.Inning
+	totals, ok := a.innings[inning]
+	if !ok {
+		totals = &inningTotals{}
+		a.innings[inning] = totals
+	}
+	if play.About.IsTopInning {
+		totals.awayRuns += deltaAway
+		totals.awayPlayed = true
+	} else {
+		totals.homeRuns += deltaHome
+		totals.homePlayed = true
+	}
+	if inning > a.maxInning {
+		a.maxInning = inning
+	}
+}
+
+func (a *gameAccumulator) applyHitsAndErrors(play mlb.Play) {
+	eventType := strings.ToLower(play.Result.EventType)
+	if eventType == "" {
+		eventType = strings.ToLower(play.Result.Event)
+	}
+	if isHitEvent(eventType) {
+		if play.About.IsTopInning {
+			a.hitsAway++
+		} else {
+			a.hitsHome++
 		}
 	}
-	return strings.Join(lines, "\n")
+	if isErrorEvent(eventType) {
+		if play.About.IsTopInning {
+			a.errorsHome++
+		} else {
+			a.errorsAway++
+		}
+	}
+}
+
+func (a *gameAccumulator) applyRunners(play mlb.Play) {
+	nextBases := map[string]int{
+		baseFirst:  a.bases[baseFirst],
+		baseSecond: a.bases[baseSecond],
+		baseThird:  a.bases[baseThird],
+	}
+	for _, runner := range play.Runners {
+		id := runner.Details.Runner.ID
+		start := normalizeBase(runner.Movement.Start)
+		if start == "" {
+			start = normalizeBase(runner.Movement.OriginBase)
+		}
+		end := normalizeBase(runner.Movement.End)
+		if start != "" {
+			nextBases[start] = 0
+		}
+		if runner.Movement.IsOut {
+			continue
+		}
+		if end != "" {
+			nextBases[end] = id
+		}
+	}
+	a.bases = nextBases
+}
+
+func (a *gameAccumulator) snapshot(play mlb.Play) playSnapshot {
+	linescore := mlb.LiveLineScore{
+		CurrentInning:        play.About.Inning,
+		CurrentInningOrdinal: ordinal(play.About.Inning),
+		InningState:          halfInningLabel(play.About.HalfInning),
+		IsTopInning:          play.About.IsTopInning,
+		Balls:                play.Count.Balls,
+		Strikes:              play.Count.Strikes,
+		Outs:                 play.Count.Outs,
+		Teams: mlb.LineScoreTotals{
+			Away: mlb.LineScoreTeam{Runs: a.scoreAway, Hits: a.hitsAway, Errors: a.errorsAway},
+			Home: mlb.LineScoreTeam{Runs: a.scoreHome, Hits: a.hitsHome, Errors: a.errorsHome},
+		},
+		Offense: mlb.OffensiveState{
+			First:  baseRunnerPtr(a.bases[baseFirst]),
+			Second: baseRunnerPtr(a.bases[baseSecond]),
+			Third:  baseRunnerPtr(a.bases[baseThird]),
+		},
+		Innings: a.buildInnings(),
+	}
+	return playSnapshot{linescore: linescore}
+}
+
+func (a *gameAccumulator) buildInnings() []mlb.InningLine {
+	if a.maxInning == 0 {
+		return nil
+	}
+	innings := make([]mlb.InningLine, 0, a.maxInning)
+	for inning := 1; inning <= a.maxInning; inning++ {
+		totals, ok := a.innings[inning]
+		if !ok {
+			totals = &inningTotals{}
+		}
+		line := mlb.InningLine{Num: inning}
+		if totals.awayPlayed {
+			runs := totals.awayRuns
+			line.Away.Runs = &runs
+		}
+		if totals.homePlayed {
+			runs := totals.homeRuns
+			line.Home.Runs = &runs
+		}
+		innings = append(innings, line)
+	}
+	return innings
+}
+
+const (
+	baseFirst  = "1B"
+	baseSecond = "2B"
+	baseThird  = "3B"
+)
+
+func normalizeBase(value string) string {
+	switch strings.ToUpper(value) {
+	case baseFirst:
+		return baseFirst
+	case baseSecond:
+		return baseSecond
+	case baseThird:
+		return baseThird
+	default:
+		return ""
+	}
+}
+
+func baseRunnerPtr(id int) *mlb.BaseRunner {
+	if id == 0 {
+		return nil
+	}
+	return &mlb.BaseRunner{ID: id}
+}
+
+func isHitEvent(eventType string) bool {
+	switch eventType {
+	case "single", "double", "triple", "ground_rule_double":
+		return true
+	}
+	if strings.Contains(eventType, "home_run") {
+		return true
+	}
+	return false
+}
+
+func isErrorEvent(eventType string) bool {
+	if eventType == "" {
+		return false
+	}
+	return strings.Contains(eventType, "error")
+}
+
+func halfInningLabel(half string) string {
+	switch strings.ToLower(half) {
+	case "top":
+		return "Top"
+	case "bottom":
+		return "Bottom"
+	default:
+		if half == "" {
+			return ""
+		}
+		lower := strings.ToLower(half)
+		runes := []rune(lower)
+		runes[0] = []rune(strings.ToUpper(string(runes[0])))[0]
+		return string(runes)
+	}
+}
+
+func ordinal(n int) string {
+	suffix := "th"
+	if n%100 != 11 && n%100 != 12 && n%100 != 13 {
+		switch n % 10 {
+		case 1:
+			suffix = "st"
+		case 2:
+			suffix = "nd"
+		case 3:
+			suffix = "rd"
+		}
+	}
+	return fmt.Sprintf("%d%s", n, suffix)
 }
 
 func colorForPlay(play mlb.Play) string {
@@ -569,25 +1037,25 @@ func lastPlayEvent(play mlb.Play) *mlb.PlayEvent {
 	return &play.PlayEvents[len(play.PlayEvents)-1]
 }
 
-func renderDecisions(decisions *mlb.Decisions, box mlb.Boxscore, teams mlb.GameTeams) string {
-	if decisions == nil {
-		return ""
-	}
-	var lines []string
-	if decisions.Winner != nil {
-		player, team := lookupPlayer(decisions.Winner.ID, box, teams)
-		lines = append(lines, fmt.Sprintf("Win: %s %s (%d-%d)", safeTeam(team), safeName(player.Person.FullName), player.SeasonStats.Pitching.Wins, player.SeasonStats.Pitching.Losses))
-	}
-	if decisions.Loser != nil {
-		player, team := lookupPlayer(decisions.Loser.ID, box, teams)
-		lines = append(lines, fmt.Sprintf("Loss: %s %s (%d-%d)", safeTeam(team), safeName(player.Person.FullName), player.SeasonStats.Pitching.Wins, player.SeasonStats.Pitching.Losses))
-	}
-	if decisions.Save != nil {
-		player, team := lookupPlayer(decisions.Save.ID, box, teams)
-		lines = append(lines, fmt.Sprintf("Save: %s %s (%d)", safeTeam(team), safeName(player.Person.FullName), player.SeasonStats.Pitching.Saves))
-	}
-	return strings.Join(lines, "\n")
-}
+// func renderDecisions(decisions *mlb.Decisions, box mlb.Boxscore, teams mlb.GameTeams) string {
+// 	if decisions == nil {
+// 		return ""
+// 	}
+// 	var lines []string
+// 	if decisions.Winner != nil {
+// 		player, team := lookupPlayer(decisions.Winner.ID, box, teams)
+// 		lines = append(lines, fmt.Sprintf("Win: %s %s (%d-%d)", safeTeam(team), safeName(player.Person.FullName), player.SeasonStats.Pitching.Wins, player.SeasonStats.Pitching.Losses))
+// 	}
+// 	if decisions.Loser != nil {
+// 		player, team := lookupPlayer(decisions.Loser.ID, box, teams)
+// 		lines = append(lines, fmt.Sprintf("Loss: %s %s (%d-%d)", safeTeam(team), safeName(player.Person.FullName), player.SeasonStats.Pitching.Wins, player.SeasonStats.Pitching.Losses))
+// 	}
+// 	if decisions.Save != nil {
+// 		player, team := lookupPlayer(decisions.Save.ID, box, teams)
+// 		lines = append(lines, fmt.Sprintf("Save: %s %s (%d)", safeTeam(team), safeName(player.Person.FullName), player.SeasonStats.Pitching.Saves))
+// 	}
+// 	return strings.Join(lines, "\n")
+// }
 
 func renderInning(linescore mlb.LiveLineScore) string {
 	symbol := "▼"
@@ -598,11 +1066,12 @@ func renderInning(linescore mlb.LiveLineScore) string {
 }
 
 var (
-	columnStyle = lipgloss.NewStyle().Width(30).Align(lipgloss.Center).Padding(0, 2)
-	tableStyle  = lipgloss.NewStyle().Padding(0, 1)
-	inningStyle = lipgloss.NewStyle().Align(lipgloss.Right)
-	countStyle  = lipgloss.NewStyle().MarginLeft(2)
-	basesStyle  = lipgloss.NewStyle().MarginLeft(2)
+	columnStyle       = lipgloss.NewStyle().Width(30).Align(lipgloss.Center).Padding(0, 2)
+	tableStyle        = lipgloss.NewStyle().Padding(0, 1)
+	inningStyle       = lipgloss.NewStyle().Align(lipgloss.Right)
+	countStyle        = lipgloss.NewStyle().MarginLeft(2)
+	basesStyle        = lipgloss.NewStyle().MarginLeft(2)
+	selectedPlayStyle = lipgloss.NewStyle().Bold(true).Underline(true)
 )
 
 func safeName(name string) string {

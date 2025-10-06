@@ -31,8 +31,7 @@ type Model struct {
 
 	curModel ModelIndex
 	schedule ScheduleModel
-	// game      GameModel
-	// standings StandingsModel
+	game     GameModel
 
 	spinner   spinner.Model
 	helpModel help.Model
@@ -57,8 +56,7 @@ func NewAppModel(client *mlb.Client) Model {
 		helpModel: help.New(),
 
 		schedule: NewScheduleModel(client, ctx),
-		// game:            NewGameModel(client),
-		// standings:       NewStandingsModel(client).Year()),
+		game:     NewGameModel(client, ctx),
 	}
 	return m
 }
@@ -70,7 +68,6 @@ func (m Model) Init() tea.Cmd {
 
 // Update reacts to incoming messages and user input.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
@@ -78,31 +75,73 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.schedule.SetSize(msg.Width, msg.Height-2) // Account for header and footer
+		m.game.SetSize(msg.Width, msg.Height-2)
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
 			m.cancel()
 			return m, tea.Quit
+		case "esc":
+			if m.curModel == viewGame {
+				m.curModel = viewSchedule
+				m.game.SetActive(false)
+				m.schedule.SetActive(true)
+			}
+		}
+	case openGameMsg:
+		m.curModel = viewGame
+		m.schedule.SetActive(false)
+		m.game.SetActive(true)
+		if m.width > 0 && m.height > 0 {
+			m.game.SetSize(m.width, m.height-2)
+		}
+		var startCmd tea.Cmd
+		m.game, startCmd = m.game.Start(msg.GameID)
+		if startCmd != nil {
+			cmds = append(cmds, startCmd)
 		}
 	}
 
-	// Update sub-models (inactive models ignore key events)
-	m.schedule, cmd = m.schedule.Update(msg)
+	if m.curModel != viewSchedule {
+		m.schedule.SetActive(false)
+	} else {
+		m.schedule.SetActive(true)
+	}
+
+	var cmd tea.Cmd
+	var outModel tea.Model
+	outModel, cmd = m.schedule.Update(msg)
+	m.schedule = outModel.(ScheduleModel)
 	if cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 
+	if m.curModel == viewGame {
+		var gameCmd tea.Cmd
+		m.game, gameCmd = m.game.Update(msg)
+		if gameCmd != nil {
+			cmds = append(cmds, gameCmd)
+		}
+	}
+
 	if m.isLoading() {
-		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
-		cmds = append(cmds, cmd)
+		var spinCmd tea.Cmd
+		m.spinner, spinCmd = m.spinner.Update(msg)
+		if spinCmd != nil {
+			cmds = append(cmds, spinCmd)
+		}
 	}
 
 	return m, tea.Batch(cmds...)
 }
 
 func (m Model) isLoading() bool {
-	return m.schedule.loading
+	switch m.curModel {
+	case viewGame:
+		return m.game.loading && m.game.gameID != 0
+	default:
+		return m.schedule.loading
+	}
 }
 
 // View renders the entire screen for the current state.
@@ -110,23 +149,19 @@ func (m Model) View() string {
 	header := styles.AppHeaderStyle.Width(m.width).Render("Batter Up!")
 	footer := styles.AppHeaderStyle.Width(m.width).Render("https://github.com/daltonsw/batterup")
 
-	mainHeight := m.height
-	if mainHeight > 0 {
-		mainHeight--
-	}
 	var content string
 	switch m.curModel {
 	case viewSchedule:
 		content = m.schedule.View()
-		// case viewGame:
-		// 	content = m.game.View()
-		// case viewStandings:
-		// 	content = m.standings.View()
+	case viewGame:
+		content = m.game.View()
 	}
 
 	if m.height <= 0 {
 		return content
 	}
+
+	content = styles.MainContentWrapperStyle.Height(m.height - lipgloss.Height(header) - lipgloss.Height(footer)).Render(content)
 
 	return lipgloss.JoinVertical(lipgloss.Center, header, content, footer)
 }
@@ -138,6 +173,6 @@ func (m *Model) Cancel() {
 }
 
 // openGameMsg instructs the root model to enter the game view.
-// type openGameMsg struct {
-// 	GameID int
-// }
+type openGameMsg struct {
+	GameID int
+}

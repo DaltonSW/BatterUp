@@ -22,6 +22,8 @@ var (
 var (
 	AppHeaderStyle = lipgloss.NewStyle().Background(lipgloss.White).Foreground(lipgloss.Black).Bold(true).Italic(true).AlignHorizontal(lipgloss.Center)
 
+	MainContentWrapperStyle = lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Top).Padding(1)
+
 	ScheduleListItem = lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Left).Border(lipgloss.HiddenBorder())
 	ScheduleListCurr = lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Left).Border(lipgloss.RoundedBorder())
 
