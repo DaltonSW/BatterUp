@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss/v2"
 	"go.dalton.dog/batterup/internal/mlb"
+	"go.dalton.dog/batterup/internal/styles"
 )
 
 func TestRenderEventLineFormatsPitch(t *testing.T) {
@@ -96,6 +98,43 @@ func TestRenderPlayLinesIncludesEventAndDetails(t *testing.T) {
 	}
 	if strings.TrimSpace(lines[1]) != "Line drive" {
 		t.Fatalf("expected detail line with description, got %q", lines[1])
+	}
+}
+
+func TestColorForPlayMarksOuts(t *testing.T) {
+	play := mlb.Play{
+		Result: mlb.PlayResult{
+			Event:     "Flyout",
+			IsOut:     true,
+			EventType: "flyout",
+		},
+		About: mlb.PlayAbout{
+			HasOut: true,
+		},
+		PlayEvents: []mlb.PlayEvent{
+			{Details: mlb.PlayEventDetails{IsInPlay: true}},
+		},
+	}
+	if got := colorForPlay(play); got != lipgloss.NewStyle().Foreground(styles.OutColor).Render("Flyout") {
+		t.Fatalf("expected out color for flyout, got %q", got)
+	}
+}
+
+func TestColorForPlayMarksHits(t *testing.T) {
+	play := mlb.Play{
+		Result: mlb.PlayResult{
+			Event: "Single",
+			IsOut: false,
+		},
+		About: mlb.PlayAbout{
+			HasOut: false,
+		},
+		PlayEvents: []mlb.PlayEvent{
+			{Details: mlb.PlayEventDetails{IsInPlay: true}},
+		},
+	}
+	if got := colorForPlay(play); got != lipgloss.NewStyle().Foreground(styles.InPlayNoOutColor).Render("Single") {
+		t.Fatalf("expected in-play no-out color for single, got %q", got)
 	}
 }
 

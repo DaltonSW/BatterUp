@@ -386,30 +386,38 @@ func renderHalfInningSeparator(play mlb.Play, spaced bool) string {
 }
 
 func colorForPlay(play mlb.Play) string {
-	color := styles.OtherEventColor
+	clr := styles.OtherEventColor
 	last := lastPlayEvent(play)
+	isOut := play.Result.IsOut || play.About.HasOut
+
 	if last != nil {
-		if last.Details.IsBall {
-			color = styles.WalkColor
-		} else if last.Details.IsStrike {
-			color = styles.StrikeOutColor
-		} else if last.Details.IsInPlay {
-			if play.About.HasOut {
-				color = styles.InPlayOutColor
+		switch {
+		case last.Details.IsStrike:
+			clr = styles.StrikeOutColor
+		case last.Details.IsBall && !isOut:
+			clr = styles.WalkColor
+		case last.Details.IsInPlay:
+			if isOut {
+				clr = styles.OutColor
 			} else {
-				color = styles.InPlayNoOutColor
+				clr = styles.InPlayNoOutColor
 			}
 		}
 	}
+
+	if isOut && clr == styles.OtherEventColor {
+		clr = styles.OutColor
+	}
+
 	text := play.Result.Event
 	if text == "" {
 		text = play.Result.Description
 	}
 	if text == "" {
 		text = "In Progress..."
-		color = styles.OtherEventColor
+		clr = styles.OtherEventColor
 	}
-	style := lipgloss.NewStyle().Foreground(color).Bold(play.About.IsScoringPlay)
+	style := lipgloss.NewStyle().Foreground(clr).Bold(play.About.IsScoringPlay)
 	return style.Render(text)
 }
 
