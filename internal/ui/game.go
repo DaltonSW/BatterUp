@@ -63,7 +63,7 @@ func (g *GameModel) SetSize(width, height int) {
 	g.width = width
 	g.height = height - 2
 
-	g.playsHeight = max(height-10, 5)
+	g.playsHeight = max(height-4, 5) // 4 accounts for the style's padding and border. I'll move the Style to styles... eventually
 	g.scrollToSelected()
 }
 

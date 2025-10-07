@@ -31,7 +31,7 @@ type Model struct {
 	height int
 }
 
-// New constructs the Bubble Tea model.
+// NewAppModel constructs the Bubble Tea model.
 func NewAppModel(client *mlb.Client) Model {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -43,6 +43,7 @@ func NewAppModel(client *mlb.Client) Model {
 		schedule: NewScheduleModel(client, ctx),
 		game:     NewGameModel(client, ctx),
 	}
+
 	return m
 }
 
@@ -65,18 +66,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.schedule.SetSize(msg.Width, msg.Height-2) // Account for header and footer
 		m.game.SetSize(msg.Width, msg.Height-2)
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
 			m.cancel()
 			return m, tea.Quit
-		case "esc":
+		case "esc", "q":
 			if m.curModel == viewGame {
 				m.curModel = viewSchedule
 				m.game.SetActive(false)
 				m.schedule.SetActive(true)
+				return m, nil
 			}
 		}
+
 	case openGameMsg:
 		m.curModel = viewGame
 		m.schedule.SetActive(false)
@@ -94,12 +98,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.schedule.SetActive(true)
 	}
 
-	var cmd tea.Cmd
-	var outModel tea.Model
-	outModel, cmd = m.schedule.Update(msg)
-	m.schedule = outModel.(ScheduleModel)
-	if cmd != nil {
-		cmds = append(cmds, cmd)
+	if m.curModel == viewSchedule {
+		var cmd tea.Cmd
+		var outModel tea.Model
+		outModel, cmd = m.schedule.Update(msg)
+		m.schedule = outModel.(ScheduleModel)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
 	}
 
 	if m.curModel == viewGame {

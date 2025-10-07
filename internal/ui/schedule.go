@@ -258,14 +258,14 @@ func (s ScheduleModel) renderGame(game mlb.ScheduleGame) string {
 	homeRow := renderScheduleRow("@ ", teamColumnWidth, game.Teams.Home, homeStyle, homeRuns, homeHits, homeErrors)
 
 	rows := lipgloss.JoinVertical(
-		lipgloss.Left,
+		lipgloss.Center,
 		header,
 		awayRow,
 		homeRow,
 	)
 
 	return lipgloss.JoinVertical(
-		lipgloss.Left,
+		lipgloss.Center,
 		status,
 		rows,
 	)

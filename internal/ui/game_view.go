@@ -13,6 +13,8 @@ import (
 	"go.dalton.dog/batterup/internal/styles"
 )
 
+// Region: Game Preview
+
 func (g *GameModel) renderPreview() string {
 	teams := g.feed.GameData.Teams
 	venue := g.feed.GameData.Venue
@@ -25,7 +27,7 @@ func (g *GameModel) renderPreview() string {
 	startTime := "Start time TBD"
 	if !g.feed.GameData.Status.StartTimeTBD {
 		if t, err := time.Parse(time.RFC3339, g.feed.GameData.Datetime.DateTime); err == nil {
-			startTime = t.Local().Format("Monday, January 2, 2006 3:04 PM")
+			startTime = t.Local().Format("Monday, January 2, 2006 3:04 PM MST")
 		}
 	}
 
@@ -48,8 +50,7 @@ func previewTeamLines(team mlb.GameTeam, probable *mlb.PersonRef, roster map[str
 	if probable != nil {
 		key := fmt.Sprintf("ID%d", probable.ID)
 		if player, ok := roster[key]; ok {
-			lines = append(lines, "", player.Person.FullName)
-			lines = append(lines, fmt.Sprintf("#%s", player.JerseyNumber))
+			lines = append(lines, fmt.Sprintf("\n(#%s) %s", player.JerseyNumber, player.Person.FullName))
 			lines = append(lines, fmt.Sprintf("%d-%d", player.SeasonStats.Pitching.Wins, player.SeasonStats.Pitching.Losses))
 			lines = append(lines, fmt.Sprintf("%s ERA %d K", player.SeasonStats.Pitching.ERA, player.SeasonStats.Pitching.StrikeOuts))
 		}
@@ -58,6 +59,10 @@ func previewTeamLines(team mlb.GameTeam, probable *mlb.PersonRef, roster map[str
 	}
 	return lines
 }
+
+// End Region: Game Preview
+
+// Region: Live Game
 
 func (g *GameModel) renderLive() string {
 	linescore := g.feed.LiveData.Linescore
@@ -74,14 +79,25 @@ func (g *GameModel) renderLive() string {
 		playAvailable = true
 	}
 
-	lineScoreTable := lipgloss.NewStyle().PaddingLeft(2).Render(renderLineScoreTable(linescore, teams))
+	lineScoreTable := lipgloss.NewStyle().PaddingRight(1).Render(renderLineScoreTable(linescore, teams))
 
 	header := lipgloss.JoinHorizontal(lipgloss.Center,
 		renderInning(linescore),
 		countStyle.Render(renderCount(linescore)),
 		basesStyle.Render(renderBases(linescore)),
-		lineScoreTable,
 	)
+
+	if g.width/2 < (lipgloss.Width(header) + lipgloss.Width(lineScoreTable)) {
+		header = lipgloss.JoinVertical(lipgloss.Center,
+			header,
+			lineScoreTable,
+		)
+	} else {
+		header = lipgloss.JoinHorizontal(lipgloss.Center,
+			header,
+			lineScoreTable,
+		)
+	}
 
 	matchup := ""
 	atBat := ""
@@ -90,15 +106,20 @@ func (g *GameModel) renderLive() string {
 		atBat = renderAtBat(play)
 	}
 
-	tempContent := lipgloss.JoinVertical(lipgloss.Left,
+	leftContent := lipgloss.JoinVertical(lipgloss.Left,
 		header,
 		lipgloss.NewStyle().Margin(1, 0).Render(matchup),
 		atBat,
 	)
-	style := lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1).Height(g.height).Width(g.width / 2)
-	plays := style.Render(g.renderPlaysView())
-	return lipgloss.JoinHorizontal(lipgloss.Top, style.Render(tempContent), plays)
+
+	style := lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1).Height(g.height)
+	leftContent = style.Width(lipgloss.Width(header) + 3).Render(leftContent)
+
+	plays := style.Width(g.width - lipgloss.Width(leftContent) - 2).Render(g.renderPlaysView())
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftContent, plays)
 }
+
+// Left Half
 
 func renderLineScoreTable(linescore mlb.LiveLineScore, teams mlb.GameTeams) string {
 	tbl := table.New().Border(lipgloss.RoundedBorder())
@@ -252,6 +273,8 @@ func bullet(count, total int, clr color.Color) string {
 	}
 	return strings.Join(parts, " ")
 }
+
+// Right Half
 
 func (g *GameModel) renderPlaysView() string {
 	if len(g.playLines) == 0 {
