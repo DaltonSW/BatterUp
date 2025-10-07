@@ -24,34 +24,29 @@ type playSnapshot struct {
 	linescore mlb.LiveLineScore
 }
 
+func (g *GameModel) resetPlayState() {
+	g.playViews = nil
+	g.playLines = nil
+	g.playLineOffsets = nil
+	g.playsOffset = 0
+	g.selectedPlay = 0
+	g.selectedAtBat = -1
+}
+
 func (g *GameModel) refreshViewport() {
 	if g.feed == nil {
-		g.playViews = nil
-		g.playLines = nil
-		g.playLineOffsets = nil
-		g.playsOffset = 0
-		g.selectedPlay = 0
-		g.selectedAtBat = -1
+		g.resetPlayState()
 		return
 	}
 	plays := g.feed.LiveData.Plays.AllPlays
 	if len(plays) == 0 {
-		g.playViews = nil
-		g.playLines = nil
-		g.playLineOffsets = nil
-		g.playsOffset = 0
-		g.selectedPlay = 0
-		g.selectedAtBat = -1
+		g.resetPlayState()
 		return
 	}
 	snapshots := buildPlaySnapshots(plays)
 	g.playViews = buildPlayViews(plays, snapshots)
 	if len(g.playViews) == 0 {
-		g.playLines = nil
-		g.playLineOffsets = nil
-		g.playsOffset = 0
-		g.selectedPlay = 0
-		g.selectedAtBat = -1
+		g.resetPlayState()
 		return
 	}
 	if g.selectedAtBat >= 0 {

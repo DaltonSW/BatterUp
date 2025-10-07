@@ -3,9 +3,6 @@ package ui
 import (
 	"context"
 
-	"github.com/charmbracelet/bubbles/v2/help"
-	"github.com/charmbracelet/bubbles/v2/spinner"
-
 	tea "github.com/charmbracelet/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss/v2"
 
@@ -19,7 +16,6 @@ type ModelIndex int
 const (
 	viewSchedule ModelIndex = iota
 	viewGame
-	viewStandings
 )
 
 // Model orchestrates the entire Bubble Tea program.
@@ -27,14 +23,9 @@ type Model struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	client *mlb.Client
-
 	curModel ModelIndex
 	schedule ScheduleModel
 	game     GameModel
-
-	spinner   spinner.Model
-	helpModel help.Model
 
 	width  int
 	height int
@@ -44,16 +35,10 @@ type Model struct {
 func NewAppModel(client *mlb.Client) Model {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	spinner := spinner.New()
-
 	m := Model{
 		ctx:      ctx,
 		cancel:   cancel,
-		client:   client,
 		curModel: viewSchedule,
-
-		spinner:   spinner,
-		helpModel: help.New(),
 
 		schedule: NewScheduleModel(client, ctx),
 		game:     NewGameModel(client, ctx),
@@ -68,7 +53,11 @@ func (m Model) Init() tea.Cmd {
 
 // Update reacts to incoming messages and user input.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
+	var (
+		cmds           []tea.Cmd
+		gameCmd        tea.Cmd
+		handledGameMsg bool
+	)
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -95,11 +84,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.width > 0 && m.height > 0 {
 			m.game.SetSize(m.width, m.height-2)
 		}
-		var startCmd tea.Cmd
-		m.game, startCmd = m.game.Start(msg.GameID)
-		if startCmd != nil {
-			cmds = append(cmds, startCmd)
-		}
+		m.game, gameCmd = m.game.Update(msg)
+		handledGameMsg = true
 	}
 
 	if m.curModel != viewSchedule {
@@ -117,31 +103,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.curModel == viewGame {
-		var gameCmd tea.Cmd
-		m.game, gameCmd = m.game.Update(msg)
+		if !handledGameMsg {
+			m.game, gameCmd = m.game.Update(msg)
+		}
 		if gameCmd != nil {
 			cmds = append(cmds, gameCmd)
 		}
 	}
 
-	if m.isLoading() {
-		var spinCmd tea.Cmd
-		m.spinner, spinCmd = m.spinner.Update(msg)
-		if spinCmd != nil {
-			cmds = append(cmds, spinCmd)
-		}
-	}
-
 	return m, tea.Batch(cmds...)
-}
-
-func (m Model) isLoading() bool {
-	switch m.curModel {
-	case viewGame:
-		return m.game.loading && m.game.gameID != 0
-	default:
-		return m.schedule.loading
-	}
 }
 
 // View renders the entire screen for the current state.

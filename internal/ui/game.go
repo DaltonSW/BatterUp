@@ -31,7 +31,6 @@ type GameModel struct {
 	playLineOffsets []int
 	playsOffset     int
 	playsHeight     int
-	playsWidth      int
 	selectedPlay    int
 	selectedAtBat   int
 }
@@ -64,33 +63,8 @@ func (g *GameModel) SetSize(width, height int) {
 	g.width = width
 	g.height = height - 2
 
-	availWidth := max(width-4, 20)
-	availHeight := max(height-10, 5)
-
-	g.playsWidth = availWidth
-	g.playsHeight = availHeight
+	g.playsHeight = max(height-10, 5)
 	g.scrollToSelected()
-}
-
-func (g GameModel) Start(gameID int) (GameModel, tea.Cmd) {
-	g.gameID = gameID
-	g.feed = nil
-	g.err = nil
-	g.active = true
-	g.playViews = nil
-	g.playLines = nil
-	g.playLineOffsets = nil
-	g.playsOffset = 0
-	g.selectedPlay = 0
-	g.selectedAtBat = -1
-	g.loading = gameID != 0
-
-	if gameID == 0 {
-		return g, nil
-	}
-
-	g.requestID++
-	return g, g.fetch()
 }
 
 func (g GameModel) Init() tea.Cmd {
@@ -106,6 +80,20 @@ func (g *GameModel) SetActive(active bool) {
 
 func (g GameModel) Update(msg tea.Msg) (GameModel, tea.Cmd) {
 	switch msg := msg.(type) {
+	case openGameMsg:
+		if !g.active {
+			return g, nil
+		}
+		g.gameID = msg.GameID
+		g.feed = nil
+		g.err = nil
+		g.resetPlayState()
+		g.loading = msg.GameID != 0
+		if g.gameID == 0 {
+			return g, nil
+		}
+		g.requestID++
+		return g, g.fetch()
 	case tea.KeyMsg:
 		if !g.active {
 			return g, nil

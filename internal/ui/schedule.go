@@ -31,8 +31,7 @@ type ScheduleModel struct {
 	width  int
 	height int
 
-	initialized bool
-	active      bool
+	active bool
 }
 
 type scheduleLoadedMsg struct {
@@ -121,7 +120,6 @@ func (s ScheduleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !sameDay(msg.date, s.date) {
 			return s, nil
 		}
-		s.initialized = true
 		s.loading = false
 		s.err = nil
 		s.games = msg.games
