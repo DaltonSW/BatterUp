@@ -44,5 +44,5 @@ var (
 	ScheduleTableStat   = lipgloss.NewStyle().Foreground(lipgloss.BrightWhite)
 
 	LiveGameSectionWrapper  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
-	LiveGamePlayDescription = lipgloss.NewStyle().Align(lipgloss.Center).Foreground(lipgloss.Cyan).Italic(true)
+	LiveGamePlayDescription = lipgloss.NewStyle().Padding(1, 0).Align(lipgloss.Center).Foreground(lipgloss.Cyan).Italic(true)
 )

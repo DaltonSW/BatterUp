@@ -36,7 +36,8 @@ func TestRenderEventLineSkipsWhenEmpty(t *testing.T) {
 
 func TestRenderAtBatOrdersEvents(t *testing.T) {
 	play := mlb.Play{
-		Result: mlb.PlayResult{Description: "Player doubled"},
+		AtBatIndex: 5,
+		Result:     mlb.PlayResult{Description: "Player doubled"},
 		PlayEvents: []mlb.PlayEvent{
 			{Details: mlb.PlayEventDetails{Description: "Pitch 1"}},
 			{Details: mlb.PlayEventDetails{Description: "Pitch 2"}},
@@ -47,11 +48,11 @@ func TestRenderAtBatOrdersEvents(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("expected 3 lines, got %d", len(lines))
 	}
-	if lines[0] != "Player doubled" {
-		t.Fatalf("expected result description first, got %q", lines[0])
+	if !strings.Contains(lines[0], "#5") || !strings.Contains(lines[0], "Player doubled") {
+		t.Fatalf("expected numbered result line, got %q", lines[0])
 	}
-	if lines[1] != "Pitch 1" || lines[2] != "Pitch 2" {
-		t.Fatalf("expected events in chronological order, got %v", lines[1:])
+	if lines[1] != "  Pitch 1" || lines[2] != "  Pitch 2" {
+		t.Fatalf("expected events indented in chronological order, got %v", lines[1:])
 	}
 }
 
@@ -71,6 +72,7 @@ func TestRenderBasesHighlightsOccupied(t *testing.T) {
 
 func TestRenderPlayLinesIncludesEventAndDetails(t *testing.T) {
 	play := mlb.Play{
+		AtBatIndex: 12,
 		About:      mlb.PlayAbout{HalfInning: "top", Inning: 3},
 		Result:     mlb.PlayResult{Event: "Single"},
 		PlayEvents: []mlb.PlayEvent{{Details: mlb.PlayEventDetails{Description: "Line drive"}}},
@@ -79,11 +81,11 @@ func TestRenderPlayLinesIncludesEventAndDetails(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("expected event summary and one detail, got %d", len(lines))
 	}
-	if !strings.Contains(lines[0], "Single") {
-		t.Fatalf("expected first line to include event, got %q", lines[0])
+	if !strings.Contains(lines[0], "Single") || !strings.Contains(lines[0], "12") {
+		t.Fatalf("expected first line to include number and event, got %q", lines[0])
 	}
-	if !strings.Contains(lines[1], "Line drive") || !strings.HasPrefix(lines[1], "  ") {
-		t.Fatalf("expected indented detail line, got %q", lines[1])
+	if lines[1] != "Line drive" {
+		t.Fatalf("expected detail line without leading spaces, got %q", lines[1])
 	}
 }
 

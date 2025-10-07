@@ -116,7 +116,7 @@ func (g *GameModel) renderLive() string {
 	atBat = styles.LiveGameSectionWrapper.Width(lipgloss.Width(header)).Height(g.height - lipgloss.Height(header)).Render(atBat)
 	leftContent := lipgloss.JoinVertical(lipgloss.Left, header, atBat)
 
-	plays := styles.LiveGameSectionWrapper.Width(g.width - lipgloss.Width(leftContent) - 2).Height(g.height).Render(g.renderPlaysView())
+	plays := styles.LiveGameSectionWrapper.Width(g.width - lipgloss.Width(leftContent) - 2).MaxHeight(g.height).Render(g.renderPlaysView())
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftContent, plays)
 }
 
@@ -185,11 +185,11 @@ func renderMatchup(play mlb.Play, box mlb.Boxscore, teams mlb.GameTeams) string 
 	pitchTeam = safeTeam(pitchTeam)
 	batTeam = safeTeam(batTeam)
 
-	pitchLine := fmt.Sprintf("%s Pitching: %s %s IP, %d P, %s ERA",
+	pitchLine := fmt.Sprintf("%s Pitching\n -  %s %s IP, %d P, %s ERA",
 		pitchTeam, safeName(pitcher.Person.FullName), pitcher.Stats.Pitching.InningsPitched,
 		pitcher.Stats.Pitching.PitchesThrown, pitcher.SeasonStats.Pitching.ERA)
 
-	batLine := fmt.Sprintf("%s At Bat: %s %d-%d, %s AVG, %d HR",
+	batLine := fmt.Sprintf("%s At Bat\n -  %s %d-%d, %s AVG, %d HR",
 		batTeam, safeName(batter.Person.FullName), batter.Stats.Batting.Hits, batter.Stats.Batting.AtBats,
 		batter.SeasonStats.Batting.AVG, batter.SeasonStats.Batting.HomeRuns)
 
@@ -209,9 +209,18 @@ func lookupPlayer(id int, box mlb.Boxscore, teams mlb.GameTeams) (mlb.BoxscorePl
 
 func renderAtBat(play mlb.Play) string {
 	var lines []string
-	if play.Result.Description != "" {
-		lines = append(lines, styles.LiveGamePlayDescription.Render(play.Result.Description))
+	summary := play.Result.Description
+	if summary == "" {
+		summary = play.Result.Event
 	}
+	header := fmt.Sprintf("#%d", play.AtBatIndex+1)
+	if summary == "" {
+		summary = "In Progress..."
+	}
+
+	header = fmt.Sprintf("%s %s", header, summary)
+
+	lines = append(lines, styles.LiveGamePlayDescription.Render(header))
 	for i := 0; i < len(play.PlayEvents); i++ {
 		event := play.PlayEvents[i]
 		line := renderEventLine(event)
@@ -304,21 +313,23 @@ func (g *GameModel) renderPlaysView() string {
 func (g *GameModel) renderPlayLine(idx int) string {
 	line := g.playLines[idx]
 	text := line.text
-	if line.playIndex == g.selectedPlay && line.isHeader {
-		return selectedPlayStyle.Render(text)
+	rendered := text
+	if line.playIndex == g.selectedPlay {
+		rendered = selectedPlayDetailStyle.Render(rendered)
 	}
-	return text
+	return rendered
 }
 
 func renderPlayLines(play mlb.Play) []string {
-	header := colorForPlay(play)
+	number := atBatNumberStyle.Render(fmt.Sprintf("%3d", play.AtBatIndex+1))
+	header := fmt.Sprintf("%s %s", number, colorForPlay(play))
 	lines := []string{header}
 	for j := 0; j < len(play.PlayEvents); j++ {
 		event := play.PlayEvents[j]
 		if event.Details.Description == "" {
 			continue
 		}
-		lines = append(lines, "  "+event.Details.Description)
+		lines = append(lines, "     "+event.Details.Description)
 	}
 	return lines
 }
@@ -375,26 +386,30 @@ func renderHalfInningSeparator(play mlb.Play, spaced bool) string {
 }
 
 func colorForPlay(play mlb.Play) string {
-	clr := styles.OtherEventColor
+	color := styles.OtherEventColor
 	last := lastPlayEvent(play)
 	if last != nil {
 		if last.Details.IsBall {
-			clr = styles.WalkColor
+			color = styles.WalkColor
 		} else if last.Details.IsStrike {
-			clr = styles.StrikeOutColor
+			color = styles.StrikeOutColor
 		} else if last.Details.IsInPlay {
 			if play.About.HasOut {
-				clr = styles.InPlayOutColor
+				color = styles.InPlayOutColor
 			} else {
-				clr = styles.InPlayNoOutColor
+				color = styles.InPlayNoOutColor
 			}
 		}
 	}
-	style := lipgloss.NewStyle().Foreground(clr).Bold(play.About.IsScoringPlay)
 	text := play.Result.Event
 	if text == "" {
 		text = play.Result.Description
 	}
+	if text == "" {
+		text = "In Progress..."
+		color = styles.OtherEventColor
+	}
+	style := lipgloss.NewStyle().Foreground(color).Bold(play.About.IsScoringPlay)
 	return style.Render(text)
 }
 
@@ -420,7 +435,10 @@ var (
 	inningStyle              = lipgloss.NewStyle().Align(lipgloss.Right).PaddingLeft(1)
 	countStyle               = lipgloss.NewStyle().MarginLeft(2)
 	basesStyle               = lipgloss.NewStyle().MarginLeft(2)
-	selectedPlayStyle        = lipgloss.NewStyle().Bold(true).Underline(true)
+	selectedPlayStyle        = lipgloss.NewStyle().Bold(true)
+	selectedPlayDetailStyle  = lipgloss.NewStyle().Foreground(lipgloss.Yellow).Italic(true)
+	atBatNumberStyle         = lipgloss.NewStyle().Foreground(lipgloss.Cyan).Bold(true)
+	selectedPlayIndicator    = lipgloss.NewStyle().Foreground(lipgloss.Yellow).Bold(true).Render("▶")
 	halfInningSeparatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Magenta).Bold(true).MarginTop(1)
 )
 
