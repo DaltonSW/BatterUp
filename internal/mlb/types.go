@@ -1,6 +1,9 @@
 package mlb
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // ScheduleResponse represents the MLB schedule API response.
 type ScheduleResponse struct {
@@ -200,25 +203,31 @@ type InningTeamRuns struct {
 
 // Play represents a single play with all supporting metadata.
 type Play struct {
-	Result     PlayResult  `json:"result"`
-	About      PlayAbout   `json:"about"`
-	Count      PlayCount   `json:"count"`
-	Matchup    PlayMatchup `json:"matchup"`
-	PlayEvents []PlayEvent `json:"playEvents"`
+	Result     PlayResult   `json:"result"`
+	About      PlayAbout    `json:"about"`
+	Count      PlayCount    `json:"count"`
+	Matchup    PlayMatchup  `json:"matchup"`
+	PlayEvents []PlayEvent  `json:"playEvents"`
+	Runners    []PlayRunner `json:"runners"`
+	AtBatIndex int          `json:"atBatIndex"`
 }
 
 // PlayResult summarises the outcome of a play.
 type PlayResult struct {
 	Description string `json:"description"`
 	Event       string `json:"event"`
+	EventType   string `json:"eventType"`
 	AwayScore   int    `json:"awayScore"`
 	HomeScore   int    `json:"homeScore"`
+	RBI         int    `json:"rbi"`
+	IsOut       bool   `json:"isOut"`
 }
 
 // PlayAbout contains inning, outs, and scoring context.
 type PlayAbout struct {
 	Inning        int    `json:"inning"`
 	HalfInning    string `json:"halfInning"`
+	IsTopInning   bool   `json:"isTopInning"`
 	IsComplete    bool   `json:"isComplete"`
 	IsScoringPlay bool   `json:"isScoringPlay"`
 	HasOut        bool   `json:"hasOut"`
@@ -247,9 +256,67 @@ type PlayEvent struct {
 	PitchData     *PitchData       `json:"pitchData"`
 }
 
+// PlayRunner captures how individual runners advance on a play.
+type PlayRunner struct {
+	Movement RunnerMovement `json:"movement"`
+	Details  RunnerDetails  `json:"details"`
+}
+
+// RunnerMovement describes the bases a runner traversed.
+type RunnerMovement struct {
+	OriginBase string `json:"originBase"`
+	Start      string `json:"start"`
+	End        string `json:"end"`
+	IsOut      bool   `json:"isOut"`
+	OutBase    string `json:"outBase"`
+	OutNumber  *int   `json:"outNumber"`
+}
+
+// RunnerDetails contains the identifying information for a runner.
+type RunnerDetails struct {
+	Event          string     `json:"event"`
+	EventType      string     `json:"eventType"`
+	Runner         RunnerInfo `json:"runner"`
+	RBI            bool       `json:"rbi"`
+	Earned         bool       `json:"earned"`
+	IsScoringEvent bool       `json:"isScoringEvent"`
+}
+
+// RunnerInfo identifies a runner by player id.
+type RunnerInfo struct {
+	ID int `json:"id"`
+}
+
 // PlayEventType is used for human-readable descriptions.
 type PlayEventType struct {
 	Description string `json:"description"`
+}
+
+func (t *PlayEventType) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		t.Description = ""
+		return nil
+	}
+	if len(data) == 0 {
+		t.Description = ""
+		return nil
+	}
+	if data[0] == '{' {
+		var aux struct {
+			Description string `json:"description"`
+		}
+		if err := json.Unmarshal(data, &aux); err != nil {
+			return err
+		}
+		t.Description = aux.Description
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	t.Description = s
+	return nil
 }
 
 // PlayEventDetails holds textual descriptions and flags.

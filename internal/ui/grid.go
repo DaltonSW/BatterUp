@@ -10,9 +10,7 @@ import (
 
 type GridItem string
 
-// GridModel is essentially a List but in a grid instead of just a column.
-// It doessn't (puresently) handle overflowing very well, though hopefully
-// that shouldn't be much eof an issue...? There aren't *that* many games per day.
+// GridModel renders schedule items in a grid instead of a single column.
 type GridModel struct {
 	items  []GridItem
 	cursor int
@@ -20,16 +18,13 @@ type GridModel struct {
 	width  int
 	height int
 
-	itemWidth    int
-	itemHeight   int
-	itemsPerRow  int
-	itemsPerPage int
+	itemWidth   int
+	itemHeight  int
+	itemsPerRow int
 }
 
 func NewGridModel() GridModel {
-	model := GridModel{}
-
-	return model
+	return GridModel{}
 }
 
 func (m GridModel) GetIndex() int {
@@ -50,7 +45,7 @@ func (m *GridModel) SetItems(items []GridItem) {
 	for _, item := range m.items {
 		itemStr := string(item)
 		if w := lipgloss.Width(itemStr); w > m.itemWidth {
-			m.itemWidth = w
+			m.itemWidth = w + 2
 		}
 		if h := lipgloss.Height(itemStr); h > m.itemHeight {
 			m.itemHeight = h
@@ -174,9 +169,4 @@ func (m *GridModel) calculateLayout() {
 	// Each item takes itemWidth + 2 spaces (1 on each side)
 	totalItemWidth := m.itemWidth + 2
 	m.itemsPerRow = max(1, m.width/totalItemWidth)
-
-	// Calculate items per page
-	totalItemHeight := m.itemHeight + 2
-	rows := max(1, (m.height-2)/totalItemHeight)
-	m.itemsPerPage = m.itemsPerRow * rows
 }

@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"time"
-	// "strconv"
 )
 
 const (
@@ -45,7 +44,7 @@ type Client struct {
 	http *http.Client
 }
 
-// NewClient returns a Client with the provided HTTP client (or a reasonable default).
+// NewClient returns a Client with a default HTTP client and timeout.
 func NewClient() *Client {
 	return &Client{http: &http.Client{Timeout: 15 * time.Second}}
 }

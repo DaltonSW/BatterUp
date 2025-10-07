@@ -22,8 +22,27 @@ var (
 var (
 	AppHeaderStyle = lipgloss.NewStyle().Background(lipgloss.White).Foreground(lipgloss.Black).Bold(true).Italic(true).AlignHorizontal(lipgloss.Center)
 
-	ScheduleListItem = lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Left).Border(lipgloss.HiddenBorder())
-	ScheduleListCurr = lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Left).Border(lipgloss.RoundedBorder())
+	MainContentWrapperStyle = lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Top).Padding(1)
+
+	ScheduleListItem = lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Center).Border(lipgloss.HiddenBorder())
+	ScheduleListCurr = lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Center).Border(lipgloss.RoundedBorder())
 
 	HelpTextStyle = lipgloss.NewStyle().Foreground(lipgloss.Magenta).Italic(true).Padding(1).AlignHorizontal(lipgloss.Center)
+
+	ScheduleStatusUpcoming  = lipgloss.NewStyle().Foreground(lipgloss.Blue).Bold(true)
+	ScheduleStatusLive      = lipgloss.NewStyle().Foreground(lipgloss.Red).Bold(true)
+	ScheduleStatusFinal     = lipgloss.NewStyle().Foreground(lipgloss.Green).Bold(true)
+	ScheduleStatusPostponed = lipgloss.NewStyle().Foreground(lipgloss.Yellow).Bold(true)
+
+	ScheduleWinnerTeam  = lipgloss.NewStyle().Foreground(lipgloss.BrightGreen).Bold(true)
+	ScheduleLoserTeam   = lipgloss.NewStyle()
+	ScheduleNeutralTeam = lipgloss.NewStyle()
+	ScheduleTeamRecord  = lipgloss.NewStyle().Foreground(lipgloss.Magenta)
+
+	ScheduleTeamCell    = lipgloss.NewStyle().Align(lipgloss.Left, lipgloss.Center)
+	ScheduleTableHeader = lipgloss.NewStyle().Foreground(lipgloss.Yellow).AlignHorizontal(lipgloss.Center).Bold(true)
+	ScheduleTableStat   = lipgloss.NewStyle().Foreground(lipgloss.BrightWhite)
+
+	LiveGameSectionWrapper  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
+	LiveGamePlayDescription = lipgloss.NewStyle().Padding(1, 0).Align(lipgloss.Center).Foreground(lipgloss.Cyan).Italic(true)
 )
