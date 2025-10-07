@@ -42,4 +42,7 @@ var (
 	ScheduleTeamCell    = lipgloss.NewStyle().Align(lipgloss.Left, lipgloss.Center)
 	ScheduleTableHeader = lipgloss.NewStyle().Foreground(lipgloss.Yellow).AlignHorizontal(lipgloss.Center).Bold(true)
 	ScheduleTableStat   = lipgloss.NewStyle().Foreground(lipgloss.BrightWhite)
+
+	LiveGameSectionWrapper  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
+	LiveGamePlayDescription = lipgloss.NewStyle().Align(lipgloss.Center).Foreground(lipgloss.Cyan).Italic(true)
 )

@@ -8,10 +8,11 @@ import (
 )
 
 type playView struct {
-	play      mlb.Play
-	snapshot  playSnapshot
-	lines     []string
-	lineCount int
+	play        mlb.Play
+	snapshot    playSnapshot
+	lines       []string
+	headerIndex int
+	lineCount   int
 }
 
 type playLine struct {
@@ -53,10 +54,10 @@ func (g *GameModel) refreshViewport() {
 		if idx := g.indexForAtBat(g.selectedAtBat); idx >= 0 {
 			g.selectedPlay = idx
 		} else {
-			g.selectedPlay = 0
+			g.selectedPlay = len(g.playViews) - 1
 		}
 	} else {
-		g.selectedPlay = 0
+		g.selectedPlay = len(g.playViews) - 1
 	}
 	if g.selectedPlay >= len(g.playViews) {
 		g.selectedPlay = len(g.playViews) - 1
@@ -77,11 +78,15 @@ func (g *GameModel) rebuildPlayLines() {
 	linePos := 0
 	for idx, view := range g.playViews {
 		offsets[idx] = linePos
+		headerIndex := view.headerIndex
+		if headerIndex < 0 || headerIndex >= len(view.lines) {
+			headerIndex = 0
+		}
 		for lineIdx, text := range view.lines {
 			lines = append(lines, playLine{
 				text:      text,
 				playIndex: idx,
-				isHeader:  lineIdx == 0,
+				isHeader:  lineIdx == headerIndex,
 			})
 			linePos++
 		}

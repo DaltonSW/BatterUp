@@ -99,6 +99,8 @@ func (g *GameModel) renderLive() string {
 		)
 	}
 
+	header = styles.LiveGameSectionWrapper.Render(header)
+
 	matchup := ""
 	atBat := ""
 	if playAvailable {
@@ -106,16 +108,15 @@ func (g *GameModel) renderLive() string {
 		atBat = renderAtBat(play)
 	}
 
-	leftContent := lipgloss.JoinVertical(lipgloss.Left,
-		header,
-		lipgloss.NewStyle().Margin(1, 0).Render(matchup),
+	atBat = lipgloss.JoinVertical(lipgloss.Left,
+		matchup,
 		atBat,
 	)
 
-	style := lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1).Height(g.height)
-	leftContent = style.Width(lipgloss.Width(header) + 3).Render(leftContent)
+	atBat = styles.LiveGameSectionWrapper.Width(lipgloss.Width(header)).Height(g.height - lipgloss.Height(header)).Render(atBat)
+	leftContent := lipgloss.JoinVertical(lipgloss.Left, header, atBat)
 
-	plays := style.Width(g.width - lipgloss.Width(leftContent) - 2).Render(g.renderPlaysView())
+	plays := styles.LiveGameSectionWrapper.Width(g.width - lipgloss.Width(leftContent) - 2).Height(g.height).Render(g.renderPlaysView())
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftContent, plays)
 }
 
@@ -209,9 +210,9 @@ func lookupPlayer(id int, box mlb.Boxscore, teams mlb.GameTeams) (mlb.BoxscorePl
 func renderAtBat(play mlb.Play) string {
 	var lines []string
 	if play.Result.Description != "" {
-		lines = append(lines, play.Result.Description)
+		lines = append(lines, styles.LiveGamePlayDescription.Render(play.Result.Description))
 	}
-	for i := len(play.PlayEvents) - 1; i >= 0; i-- {
+	for i := 0; i < len(play.PlayEvents); i++ {
 		event := play.PlayEvents[i]
 		line := renderEventLine(event)
 		if line != "" {
@@ -310,9 +311,9 @@ func (g *GameModel) renderPlayLine(idx int) string {
 }
 
 func renderPlayLines(play mlb.Play) []string {
-	header := fmt.Sprintf("[%s %d] %s", strings.ToUpper(play.About.HalfInning), play.About.Inning, colorForPlay(play))
+	header := colorForPlay(play)
 	lines := []string{header}
-	for j := len(play.PlayEvents) - 1; j >= 0; j-- {
+	for j := 0; j < len(play.PlayEvents); j++ {
 		event := play.PlayEvents[j]
 		if event.Details.Description == "" {
 			continue
@@ -327,19 +328,50 @@ func buildPlayViews(plays []mlb.Play, snapshots []playSnapshot) []playView {
 		return nil
 	}
 	views := make([]playView, 0, len(plays))
-	for i := len(plays) - 1; i >= 0; i-- {
-		lines := renderPlayLines(plays[i])
+	var (
+		prevInning int
+		prevIsTop  bool
+		havePrev   bool
+	)
+	for i := range len(plays) {
+		play := plays[i]
+		lines := renderPlayLines(play)
 		if len(lines) == 0 {
 			lines = []string{""}
 		}
+		headerIndex := 0
+		isNewHalf := !havePrev || play.About.Inning != prevInning || play.About.IsTopInning != prevIsTop
+		if isNewHalf {
+			separator := renderHalfInningSeparator(play, havePrev)
+			lines = append([]string{separator}, lines...)
+			headerIndex = 1
+			prevInning = play.About.Inning
+			prevIsTop = play.About.IsTopInning
+			havePrev = true
+		}
 		views = append(views, playView{
-			play:      plays[i],
-			snapshot:  snapshots[i],
-			lines:     lines,
-			lineCount: len(lines),
+			play:        play,
+			snapshot:    snapshots[i],
+			lines:       lines,
+			headerIndex: headerIndex,
+			lineCount:   len(lines),
 		})
 	}
 	return views
+}
+
+func renderHalfInningSeparator(play mlb.Play, spaced bool) string {
+	half := "Bottom"
+	if play.About.IsTopInning {
+		half = "Top"
+	}
+	label := fmt.Sprintf("%s %s", half, ordinal(play.About.Inning))
+	caps := strings.ToUpper(label)
+	style := halfInningSeparatorStyle
+	if !spaced {
+		style = style.MarginTop(0)
+	}
+	return style.Render(fmt.Sprintf("── %s ──", caps))
 }
 
 func colorForPlay(play mlb.Play) string {
@@ -383,12 +415,13 @@ func renderInning(linescore mlb.LiveLineScore) string {
 }
 
 var (
-	columnStyle       = lipgloss.NewStyle().Width(30).Align(lipgloss.Center).Padding(0, 2)
-	tableStyle        = lipgloss.NewStyle().Padding(0, 1)
-	inningStyle       = lipgloss.NewStyle().Align(lipgloss.Right)
-	countStyle        = lipgloss.NewStyle().MarginLeft(2)
-	basesStyle        = lipgloss.NewStyle().MarginLeft(2)
-	selectedPlayStyle = lipgloss.NewStyle().Bold(true).Underline(true)
+	columnStyle              = lipgloss.NewStyle().Width(30).Align(lipgloss.Center).Padding(0, 2)
+	tableStyle               = lipgloss.NewStyle().Padding(0, 1)
+	inningStyle              = lipgloss.NewStyle().Align(lipgloss.Right).PaddingLeft(1)
+	countStyle               = lipgloss.NewStyle().MarginLeft(2)
+	basesStyle               = lipgloss.NewStyle().MarginLeft(2)
+	selectedPlayStyle        = lipgloss.NewStyle().Bold(true).Underline(true)
+	halfInningSeparatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Magenta).Bold(true).MarginTop(1)
 )
 
 func safeName(name string) string {

@@ -50,8 +50,8 @@ func TestRenderAtBatOrdersEvents(t *testing.T) {
 	if lines[0] != "Player doubled" {
 		t.Fatalf("expected result description first, got %q", lines[0])
 	}
-	if lines[1] != "Pitch 2" || lines[2] != "Pitch 1" {
-		t.Fatalf("expected events in reverse order, got %v", lines[1:])
+	if lines[1] != "Pitch 1" || lines[2] != "Pitch 2" {
+		t.Fatalf("expected events in chronological order, got %v", lines[1:])
 	}
 }
 
@@ -69,7 +69,7 @@ func TestRenderBasesHighlightsOccupied(t *testing.T) {
 	}
 }
 
-func TestRenderPlayLinesIncludesHeader(t *testing.T) {
+func TestRenderPlayLinesIncludesEventAndDetails(t *testing.T) {
 	play := mlb.Play{
 		About:      mlb.PlayAbout{HalfInning: "top", Inning: 3},
 		Result:     mlb.PlayResult{Event: "Single"},
@@ -77,10 +77,13 @@ func TestRenderPlayLinesIncludesHeader(t *testing.T) {
 	}
 	lines := renderPlayLines(play)
 	if len(lines) != 2 {
-		t.Fatalf("expected header and one event, got %d", len(lines))
+		t.Fatalf("expected event summary and one detail, got %d", len(lines))
 	}
-	if !strings.Contains(lines[0], "TOP 3") {
-		t.Fatalf("expected header to mention inning, got %q", lines[0])
+	if !strings.Contains(lines[0], "Single") {
+		t.Fatalf("expected first line to include event, got %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "Line drive") || !strings.HasPrefix(lines[1], "  ") {
+		t.Fatalf("expected indented detail line, got %q", lines[1])
 	}
 }
 

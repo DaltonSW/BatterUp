@@ -81,19 +81,44 @@ func TestBuildPlaySnapshotsAccumulatesRunsHitsAndBases(t *testing.T) {
 	}
 }
 
-func TestBuildPlayViewsOrdersDescending(t *testing.T) {
+func TestBuildPlayViewsOrdersAscending(t *testing.T) {
 	plays := []mlb.Play{
-		{AtBatIndex: 1, Result: mlb.PlayResult{Event: "Groundout"}},
-		{AtBatIndex: 2, Result: mlb.PlayResult{Event: "Single"}},
+		{
+			AtBatIndex: 1,
+			Result:     mlb.PlayResult{Event: "Groundout"},
+			About:      mlb.PlayAbout{Inning: 1, HalfInning: "top", IsTopInning: true},
+		},
+		{
+			AtBatIndex: 2,
+			Result:     mlb.PlayResult{Event: "Single"},
+			About:      mlb.PlayAbout{Inning: 1, HalfInning: "top", IsTopInning: true},
+		},
+		{
+			AtBatIndex: 3,
+			Result:     mlb.PlayResult{Event: "Walk"},
+			About:      mlb.PlayAbout{Inning: 1, HalfInning: "bottom", IsTopInning: false},
+		},
 	}
-	snapshots := []playSnapshot{{}, {}}
+	snapshots := []playSnapshot{{}, {}, {}}
 
 	views := buildPlayViews(plays, snapshots)
 	if len(views) != len(plays) {
 		t.Fatalf("expected %d views, got %d", len(plays), len(views))
 	}
-	if views[0].play.AtBatIndex != 2 {
-		t.Fatalf("expected most recent play first")
+	if views[0].play.AtBatIndex != 1 {
+		t.Fatalf("expected earliest play first")
+	}
+	if views[len(views)-1].play.AtBatIndex != 3 {
+		t.Fatalf("expected latest play last")
+	}
+	if views[0].headerIndex != 1 {
+		t.Fatalf("expected first play to include separator header index")
+	}
+	if views[1].headerIndex != 0 {
+		t.Fatalf("expected subsequent play in same half to use zero header index")
+	}
+	if views[2].headerIndex != 1 {
+		t.Fatalf("expected new half to introduce separator header index")
 	}
 	if views[0].lineCount == 0 {
 		t.Fatalf("expected play lines to be populated")
