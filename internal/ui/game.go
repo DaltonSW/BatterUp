@@ -99,6 +99,10 @@ func (g GameModel) Update(msg tea.Msg) (GameModel, tea.Cmd) {
 			return g, nil
 		}
 		switch msg.String() {
+		case "g":
+			g.moveToStart()
+		case "G":
+			g.moveToEnd()
 		case "j", "down":
 			g.moveSelection(1)
 		case "k", "up":

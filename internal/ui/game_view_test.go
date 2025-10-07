@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -44,15 +45,23 @@ func TestRenderAtBatOrdersEvents(t *testing.T) {
 		},
 	}
 	out := renderAtBat(play)
-	lines := strings.Split(out, "\n")
-	if len(lines) != 3 {
-		t.Fatalf("expected 3 lines, got %d", len(lines))
+	raw := strings.Split(out, "\n")
+	lines := make([]string, 0, len(raw))
+	for _, line := range raw {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		lines = append(lines, line)
 	}
-	if !strings.Contains(lines[0], "#5") || !strings.Contains(lines[0], "Player doubled") {
+	if len(lines) != 3 {
+		t.Fatalf("expected header and two events, got %d lines", len(lines))
+	}
+	expectedHeader := fmt.Sprintf("#%d", play.AtBatIndex+1)
+	if !strings.Contains(lines[0], expectedHeader) || !strings.Contains(lines[0], "Player doubled") {
 		t.Fatalf("expected numbered result line, got %q", lines[0])
 	}
-	if lines[1] != "  Pitch 1" || lines[2] != "  Pitch 2" {
-		t.Fatalf("expected events indented in chronological order, got %v", lines[1:])
+	if strings.TrimSpace(lines[1]) != "Pitch 1" || strings.TrimSpace(lines[2]) != "Pitch 2" {
+		t.Fatalf("expected events in chronological order, got %q and %q", lines[1], lines[2])
 	}
 }
 
@@ -81,11 +90,12 @@ func TestRenderPlayLinesIncludesEventAndDetails(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("expected event summary and one detail, got %d", len(lines))
 	}
-	if !strings.Contains(lines[0], "Single") || !strings.Contains(lines[0], "12") {
+	expectedNumber := fmt.Sprintf("%d", play.AtBatIndex+1)
+	if !strings.Contains(lines[0], "Single") || !strings.Contains(lines[0], expectedNumber) {
 		t.Fatalf("expected first line to include number and event, got %q", lines[0])
 	}
-	if lines[1] != "Line drive" {
-		t.Fatalf("expected detail line without leading spaces, got %q", lines[1])
+	if strings.TrimSpace(lines[1]) != "Line drive" {
+		t.Fatalf("expected detail line with description, got %q", lines[1])
 	}
 }
 

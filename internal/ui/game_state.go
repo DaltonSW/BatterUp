@@ -39,6 +39,8 @@ func (g *GameModel) refreshViewport() {
 		g.resetPlayState()
 		return
 	}
+	wasFollowing := g.isFollowingLatest()
+	prevAtBat := g.selectedAtBat
 	plays := g.feed.LiveData.Plays.AllPlays
 	if len(plays) == 0 {
 		g.resetPlayState()
@@ -50,13 +52,16 @@ func (g *GameModel) refreshViewport() {
 		g.resetPlayState()
 		return
 	}
-	if g.selectedAtBat >= 0 {
-		if idx := g.indexForAtBat(g.selectedAtBat); idx >= 0 {
+	switch {
+	case wasFollowing:
+		g.selectedPlay = len(g.playViews) - 1
+	case prevAtBat >= 0:
+		if idx := g.indexForAtBat(prevAtBat); idx >= 0 {
 			g.selectedPlay = idx
 		} else {
 			g.selectedPlay = len(g.playViews) - 1
 		}
-	} else {
+	default:
 		g.selectedPlay = len(g.playViews) - 1
 	}
 	if g.selectedPlay >= len(g.playViews) {
@@ -145,6 +150,24 @@ func (g *GameModel) moveSelection(delta int) {
 	g.scrollToSelected()
 }
 
+func (g *GameModel) moveToStart() {
+	if len(g.playViews) == 0 {
+		return
+	}
+	g.selectedPlay = 0
+	g.selectedAtBat = g.playViews[0].play.AtBatIndex
+	g.scrollToSelected()
+}
+
+func (g *GameModel) moveToEnd() {
+	if len(g.playViews) == 0 {
+		return
+	}
+	g.selectedPlay = len(g.playViews) - 1
+	g.selectedAtBat = g.playViews[g.selectedPlay].play.AtBatIndex
+	g.scrollToSelected()
+}
+
 func (g *GameModel) visiblePlayCount() int {
 	if g.playsHeight <= 0 || len(g.playLines) == 0 {
 		return len(g.playViews)
@@ -203,6 +226,19 @@ func (g *GameModel) maxPlaysOffset() int {
 		return 0
 	}
 	return len(g.playLines) - g.playsHeight
+}
+
+func (g *GameModel) isFollowingLatest() bool {
+	if len(g.playViews) == 0 {
+		return true
+	}
+	if g.selectedPlay != len(g.playViews)-1 {
+		return false
+	}
+	if g.playsHeight <= 0 || len(g.playLines) == 0 {
+		return true
+	}
+	return g.playsOffset >= g.maxPlaysOffset()
 }
 
 func buildPlaySnapshots(plays []mlb.Play) []playSnapshot {

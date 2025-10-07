@@ -221,6 +221,42 @@ func TestGameModelMoveSelection(t *testing.T) {
 	}
 }
 
+func TestGameModelMoveToStartEnd(t *testing.T) {
+	gm := GameModel{
+		playViews: []playView{
+			{play: mlb.Play{AtBatIndex: 1}, lineCount: 1},
+			{play: mlb.Play{AtBatIndex: 2}, lineCount: 1},
+			{play: mlb.Play{AtBatIndex: 3}, lineCount: 1},
+		},
+		playLines: []playLine{
+			{playIndex: 0, isHeader: true},
+			{playIndex: 1, isHeader: true},
+			{playIndex: 2, isHeader: true},
+		},
+		playLineOffsets: []int{0, 1, 2},
+		playsHeight:     2,
+	}
+
+	gm.selectedPlay = 1
+	gm.playsOffset = 1
+
+	gm.moveToStart()
+	if gm.selectedPlay != 0 || gm.selectedAtBat != 1 {
+		t.Fatalf("expected moveToStart to select first play")
+	}
+	if gm.playsOffset != 0 {
+		t.Fatalf("expected moveToStart to scroll to top, got offset %d", gm.playsOffset)
+	}
+
+	gm.moveToEnd()
+	if gm.selectedPlay != 2 || gm.selectedAtBat != 3 {
+		t.Fatalf("expected moveToEnd to select last play")
+	}
+	if gm.playsOffset != 1 {
+		t.Fatalf("expected moveToEnd to position viewport near bottom, got offset %d", gm.playsOffset)
+	}
+}
+
 func TestGameModelVisiblePlayCount(t *testing.T) {
 	gm := GameModel{
 		playsHeight: 3,
@@ -260,5 +296,117 @@ func TestGameModelPageDelta(t *testing.T) {
 	gm.playLines = []playLine{{playIndex: 0}, {playIndex: 1}, {playIndex: 2}, {playIndex: 2}}
 	if got := gm.pageDelta(); got != 2 {
 		t.Fatalf("expected page delta to use visible count - 1, got %d", got)
+	}
+}
+
+func TestIsFollowingLatest(t *testing.T) {
+	gm := GameModel{
+		playViews: []playView{
+			{play: mlb.Play{AtBatIndex: 1}},
+			{play: mlb.Play{AtBatIndex: 2}},
+		},
+		playLines: []playLine{
+			{playIndex: 0, isHeader: true},
+			{playIndex: 1, isHeader: true},
+		},
+		playLineOffsets: []int{0, 1},
+		playsHeight:     1,
+	}
+
+	gm.selectedPlay = 1
+	gm.playsOffset = 1
+	if !gm.isFollowingLatest() {
+		t.Fatalf("expected following latest when at bottom")
+	}
+
+	gm.selectedPlay = 0
+	gm.playsOffset = 0
+	if gm.isFollowingLatest() {
+		t.Fatalf("expected not following latest when not on newest play")
+	}
+}
+
+func TestRefreshViewportFollowsWhenAtBottom(t *testing.T) {
+	oldViews := []playView{
+		{play: mlb.Play{AtBatIndex: 1}, lineCount: 1},
+		{play: mlb.Play{AtBatIndex: 2}, lineCount: 1},
+	}
+	oldLines := []playLine{
+		{playIndex: 0, isHeader: true},
+		{playIndex: 1, isHeader: true},
+	}
+
+	gm := GameModel{
+		playViews:       oldViews,
+		playLines:       oldLines,
+		playLineOffsets: []int{0, 1},
+		playsHeight:     1,
+		playsOffset:     1,
+		selectedPlay:    1,
+		selectedAtBat:   2,
+	}
+
+	newPlays := []mlb.Play{
+		{AtBatIndex: 1, About: mlb.PlayAbout{Inning: 1, HalfInning: "top", IsTopInning: true}, Result: mlb.PlayResult{Event: "Groundout"}},
+		{AtBatIndex: 2, About: mlb.PlayAbout{Inning: 1, HalfInning: "top", IsTopInning: true}, Result: mlb.PlayResult{Event: "Walk"}},
+		{AtBatIndex: 3, About: mlb.PlayAbout{Inning: 1, HalfInning: "top", IsTopInning: true}, Result: mlb.PlayResult{Event: "Single"}},
+	}
+
+	gm.feed = &mlb.GameFeed{
+		LiveData: mlb.LiveData{
+			Plays: mlb.Plays{
+				AllPlays: newPlays,
+			},
+		},
+	}
+
+	gm.refreshViewport()
+
+	if gm.selectedAtBat != 3 || gm.selectedPlay != 2 {
+		t.Fatalf("expected selection to follow latest play, got atBat %d index %d", gm.selectedAtBat, gm.selectedPlay)
+	}
+	if gm.playsOffset != gm.maxPlaysOffset() {
+		t.Fatalf("expected viewport to remain at bottom, got offset %d max %d", gm.playsOffset, gm.maxPlaysOffset())
+	}
+}
+
+func TestRefreshViewportKeepsPositionWhenNotFollowing(t *testing.T) {
+	oldViews := []playView{
+		{play: mlb.Play{AtBatIndex: 1}, lineCount: 1},
+		{play: mlb.Play{AtBatIndex: 2}, lineCount: 1},
+	}
+	oldLines := []playLine{
+		{playIndex: 0, isHeader: true},
+		{playIndex: 1, isHeader: true},
+	}
+
+	gm := GameModel{
+		playViews:       oldViews,
+		playLines:       oldLines,
+		playLineOffsets: []int{0, 1},
+		playsHeight:     2,
+		playsOffset:     0,
+		selectedPlay:    0,
+		selectedAtBat:   1,
+	}
+
+	newPlays := []mlb.Play{
+		{AtBatIndex: 1, About: mlb.PlayAbout{Inning: 1, HalfInning: "top", IsTopInning: true}, Result: mlb.PlayResult{Event: "Groundout"}},
+		{AtBatIndex: 2, About: mlb.PlayAbout{Inning: 1, HalfInning: "top", IsTopInning: true}, Result: mlb.PlayResult{Event: "Walk"}},
+		{AtBatIndex: 3, About: mlb.PlayAbout{Inning: 1, HalfInning: "top", IsTopInning: true}, Result: mlb.PlayResult{Event: "Single"}},
+	}
+
+	gm.feed = &mlb.GameFeed{
+		LiveData: mlb.LiveData{
+			Plays: mlb.Plays{
+				AllPlays: newPlays,
+			},
+		},
+	}
+
+	gm.refreshViewport()
+
+	if gm.selectedAtBat != 1 || gm.selectedPlay != 0 {
+		t.Fatalf("expected selection to remain on atBat 1, got atBat %d index %d", gm.selectedAtBat, gm.selectedPlay)
 	}
 }
