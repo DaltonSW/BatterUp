@@ -3,7 +3,6 @@ module go.dalton.dog/batterup
 go 1.25.1
 
 require (
-	github.com/charmbracelet/bubbles/v2 v2.0.0-beta.1
 	github.com/charmbracelet/bubbletea/v2 v2.0.0-beta.4
 	github.com/charmbracelet/lipgloss/v2 v2.0.0-beta.3
 	github.com/charmbracelet/log v0.4.2

@@ -8,9 +8,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss/v2"
-	"github.com/charmbracelet/lipgloss/v2/table"
 
 	"go.dalton.dog/batterup/internal/mlb"
+	"go.dalton.dog/batterup/internal/styles"
 )
 
 // ScheduleModel is a model that displays a given day
@@ -46,6 +46,13 @@ type scheduleFailedMsg struct {
 
 type scheduleAutoRefreshMsg struct{}
 
+const (
+	teamColumnMaxWidth = 20
+	teamColumnMinWidth = 12
+	statColumnWidth    = 2
+	statColumnSpacing  = 1
+)
+
 func NewScheduleModel(client *mlb.Client, ctx context.Context) ScheduleModel {
 	return ScheduleModel{
 		client:  client,
@@ -55,6 +62,27 @@ func NewScheduleModel(client *mlb.Client, ctx context.Context) ScheduleModel {
 		context: ctx,
 
 		grid: NewGridModel(),
+	}
+}
+
+func (s ScheduleModel) teamColumnWidth() int {
+	if s.width <= 0 {
+		return teamColumnMaxWidth
+	}
+
+	reserved := 3 * (statColumnWidth + statColumnSpacing)
+	available := s.width - reserved
+	if available <= 0 {
+		return teamColumnMinWidth
+	}
+
+	switch {
+	case available < teamColumnMinWidth:
+		return available
+	case available < teamColumnMaxWidth:
+		return available
+	default:
+		return teamColumnMaxWidth
 	}
 }
 
@@ -209,32 +237,57 @@ func (s ScheduleModel) renderGame(game mlb.ScheduleGame) string {
 		homeErrors = fmt.Sprintf("%d", linescore.Teams.Home.Errors)
 	}
 
-	gameTable := table.New().
-		Border(lipgloss.HiddenBorder()).
-		BorderTop(false).BorderBottom(false).
-		Headers("Teams                ", "R ", "H ", "E ").
-		Row(
-			"  "+formatScheduleTeam(game.Teams.Away),
-			awayRuns,
-			awayHits,
-			awayErrors,
-		).
-		Row(
-			"@ "+formatScheduleTeam(game.Teams.Home),
-			homeRuns,
-			homeHits,
-			homeErrors,
-		)
+	awayStyle, homeStyle := styles.ScheduleNeutralTeam, styles.ScheduleNeutralTeam
+	if linescore != nil && linescore.Teams.Home.Runs != linescore.Teams.Away.Runs {
+		if linescore.Teams.Away.Runs > linescore.Teams.Home.Runs {
+			awayStyle = styles.ScheduleWinnerTeam
+			homeStyle = styles.ScheduleLoserTeam
+		} else {
+			homeStyle = styles.ScheduleWinnerTeam
+			awayStyle = styles.ScheduleLoserTeam
+		}
+	}
 
-	status := lipgloss.NewStyle().Reverse(true).Render(describeGameStatus(game))
+	teamColumnWidth := s.teamColumnWidth()
 
-	table := gameTable.Render()
+	statusStyle := scheduleStatusStyle(game)
+	status := statusStyle.Render(describeGameStatus(game))
+
+	header := renderScheduleHeader(teamColumnWidth)
+	awayRow := renderScheduleRow("  ", teamColumnWidth, game.Teams.Away, awayStyle, awayRuns, awayHits, awayErrors)
+	homeRow := renderScheduleRow("@ ", teamColumnWidth, game.Teams.Home, homeStyle, homeRuns, homeHits, homeErrors)
+
+	rows := lipgloss.JoinVertical(
+		lipgloss.Left,
+		header,
+		awayRow,
+		homeRow,
+	)
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		status,
-		table,
+		rows,
 	)
+}
+
+func scheduleStatusStyle(game mlb.ScheduleGame) lipgloss.Style {
+	switch game.Status.AbstractGameCode {
+	case "P":
+		return styles.ScheduleStatusUpcoming
+	case "L":
+		return styles.ScheduleStatusLive
+	case "F":
+		return styles.ScheduleStatusFinal
+	}
+
+	if strings.Contains(strings.ToLower(game.Status.DetailedState), "postponed") ||
+		strings.Contains(strings.ToLower(game.Status.DetailedState), "delayed") ||
+		strings.Contains(strings.ToLower(game.Status.DetailedState), "suspended") {
+		return styles.ScheduleStatusPostponed
+	}
+
+	return styles.ScheduleStatusUpcoming
 }
 
 func describeGameStatus(game mlb.ScheduleGame) string {
@@ -269,6 +322,130 @@ func describeGameStatus(game mlb.ScheduleGame) string {
 	}
 }
 
-func formatScheduleTeam(team mlb.ScheduleTeam) string {
-	return fmt.Sprintf("%s (%d-%d)", team.Team.TeamName, team.LeagueRecord.Wins, team.LeagueRecord.Losses)
+func renderScheduleHeader(width int) string {
+	gap := columnGap()
+	prefix := "  "
+	contentWidth := max(0, width-lipgloss.Width(prefix))
+	headerLabel := prefix + truncateText("Team", contentWidth)
+	teamHeader := styles.ScheduleTableHeader.Width(width).Render(padToWidth(headerLabel, width))
+	rHeader := styles.ScheduleTableHeader.Width(statColumnWidth).Render(padHeaderCell("R"))
+	hHeader := styles.ScheduleTableHeader.Width(statColumnWidth).Render(padHeaderCell("H"))
+	eHeader := styles.ScheduleTableHeader.Width(statColumnWidth).Render(padHeaderCell("E"))
+
+	return lipgloss.JoinHorizontal(
+		lipgloss.Left,
+		teamHeader,
+		gap,
+		rHeader,
+		gap,
+		hHeader,
+		gap,
+		eHeader,
+	)
+}
+
+func renderScheduleRow(prefix string, width int, team mlb.ScheduleTeam, style lipgloss.Style, runs, hits, errors string) string {
+	gap := columnGap()
+	teamCellContent := formatScheduleTeamWithPrefix(prefix, width, team, style)
+	teamCell := styles.ScheduleTeamCell.Width(width).Render(teamCellContent)
+	runsCell := styles.ScheduleTableStat.Width(statColumnWidth).Render(padScoreCell(runs))
+	hitsCell := styles.ScheduleTableStat.Width(statColumnWidth).Render(padScoreCell(hits))
+	errorsCell := styles.ScheduleTableStat.Width(statColumnWidth).Render(padScoreCell(errors))
+
+	return lipgloss.JoinHorizontal(
+		lipgloss.Left,
+		teamCell,
+		gap,
+		runsCell,
+		gap,
+		hitsCell,
+		gap,
+		errorsCell,
+	)
+}
+
+func formatScheduleTeamWithPrefix(prefix string, width int, team mlb.ScheduleTeam, nameStyle lipgloss.Style) string {
+	contentWidth := max(0, width-lipgloss.Width(prefix))
+	formatted := formatScheduleTeam(team, nameStyle, contentWidth)
+	withPrefix := lipgloss.JoinHorizontal(lipgloss.Left, prefix, formatted)
+	return padToWidth(withPrefix, width)
+}
+
+func formatScheduleTeam(team mlb.ScheduleTeam, nameStyle lipgloss.Style, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+
+	recordRaw := fmt.Sprintf("(%d-%d)", team.LeagueRecord.Wins, team.LeagueRecord.Losses)
+	recordWidth := lipgloss.Width(recordRaw)
+
+	if recordWidth >= maxWidth {
+		return styles.ScheduleTeamRecord.Render(truncateText(recordRaw, maxWidth))
+	}
+
+	nameWidth := max(maxWidth-recordWidth-1, 1) // account for space before record
+
+	name := truncateText(team.Team.TeamName, nameWidth)
+
+	return lipgloss.JoinHorizontal(
+		lipgloss.Left,
+		nameStyle.Render(name),
+		" ",
+		styles.ScheduleTeamRecord.Render(recordRaw),
+	)
+}
+
+func padScoreCell(value string) string {
+	return fmt.Sprintf("%*s", statColumnWidth, value)
+}
+
+func truncateText(text string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if lipgloss.Width(text) <= width {
+		return text
+	}
+
+	const ellipsis = "…"
+	ellipsisWidth := lipgloss.Width(ellipsis)
+
+	if width <= ellipsisWidth {
+		return ellipsis
+	}
+
+	var (
+		builder strings.Builder
+		current int
+	)
+
+	for _, r := range text {
+		runeWidth := lipgloss.Width(string(r))
+		if current+runeWidth+ellipsisWidth > width {
+			break
+		}
+		builder.WriteRune(r)
+		current += runeWidth
+	}
+
+	return builder.String() + ellipsis
+}
+
+func padHeaderCell(value string) string {
+	return fmt.Sprintf("%*s", statColumnWidth, value)
+}
+
+func padToWidth(content string, width int) string {
+	current := lipgloss.Width(content)
+	if current >= width {
+		return content
+	}
+	return content + strings.Repeat(" ", width-current)
+}
+
+func columnGap() string {
+	if statColumnSpacing <= 0 {
+		return ""
+	}
+	return strings.Repeat(" ", statColumnSpacing)
 }

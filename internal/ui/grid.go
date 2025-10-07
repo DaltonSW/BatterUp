@@ -45,7 +45,7 @@ func (m *GridModel) SetItems(items []GridItem) {
 	for _, item := range m.items {
 		itemStr := string(item)
 		if w := lipgloss.Width(itemStr); w > m.itemWidth {
-			m.itemWidth = w
+			m.itemWidth = w + 2
 		}
 		if h := lipgloss.Height(itemStr); h > m.itemHeight {
 			m.itemHeight = h

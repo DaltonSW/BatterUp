@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"go.dalton.dog/batterup/internal/mlb"
+	"go.dalton.dog/batterup/internal/styles"
 )
 
 func TestSameDay(t *testing.T) {
@@ -84,7 +86,33 @@ func TestFormatScheduleTeam(t *testing.T) {
 		Team:         mlb.TeamInfo{TeamName: "Rockies"},
 		LeagueRecord: mlb.LeagueRecord{Wins: 41, Losses: 121},
 	}
-	if got := formatScheduleTeam(team); got != "Rockies (41-121)" {
-		t.Fatalf("unexpected formatted team: %q", got)
+	got := formatScheduleTeam(team, styles.ScheduleWinnerTeam, 24)
+	if !strings.Contains(got, "Rockies") || !strings.Contains(got, "(41-121)") {
+		t.Fatalf("expected team name and record in %q", got)
+	}
+}
+
+func TestFormatScheduleTeamTruncatesWhenNarrow(t *testing.T) {
+	team := mlb.ScheduleTeam{
+		Team:         mlb.TeamInfo{TeamName: "Some Extremely Long Team Name That Will Overflow"},
+		LeagueRecord: mlb.LeagueRecord{Wins: 102, Losses: 60},
+	}
+	got := formatScheduleTeam(team, styles.ScheduleWinnerTeam, 18)
+	if !strings.Contains(got, "…") {
+		t.Fatalf("expected truncation for narrow width, got %q", got)
+	}
+	if !strings.Contains(got, "(102-60)") {
+		t.Fatalf("expected record present even when truncated, got %q", got)
+	}
+}
+
+func TestFormatScheduleTeamRecordOnlyWhenTooTight(t *testing.T) {
+	team := mlb.ScheduleTeam{
+		Team:         mlb.TeamInfo{TeamName: "Team"},
+		LeagueRecord: mlb.LeagueRecord{Wins: 99, Losses: 63},
+	}
+	got := formatScheduleTeam(team, styles.ScheduleWinnerTeam, 4)
+	if !strings.Contains(got, "(") {
+		t.Fatalf("expected record fallback when width tight, got %q", got)
 	}
 }
